@@ -12,6 +12,7 @@ import {
 } from '../core/grid';
 import type { GameState } from '../core/gameState';
 import { applyClaimScore, applyTrapBonus, checkStageClear } from './scoring';
+import { collectClaimedItems } from './items';
 
 export interface ClaimOutcome {
   /** All cells converted to CLAIMED by this closure (trail + enclosed). */
@@ -59,22 +60,6 @@ function destroyTrappedMinions(state: GameState, newlyClaimed: Uint8Array): numb
   }
   return trapped;
 }
-
-/** Items whose tile just became claimed are auto-acquired exactly once (spec 2.6). */
-function collectClaimedItems(state: GameState): ItemCode[] {
-  const collected: ItemCode[] = [];
-  for (const item of state.items) {
-    if (item.collected) continue;
-    if (getCell(state.grid, item.cell.x, item.cell.y) !== CellState.Claimed) continue;
-    item.collected = true;
-    applyItemEffect(state, item.code);
-    collected.push(item.code);
-  }
-  return collected;
-}
-
-/** Effects land in M4; collection bookkeeping (once-only) is already final. */
-function applyItemEffect(_state: GameState, _code: ItemCode): void {}
 
 /**
  * Trail closure — the heart of the game (spec 2.3):
@@ -137,6 +122,32 @@ export function commitTrail(state: GameState): ClaimOutcome {
   state.gridVersion++;
 
   return { claimedCells: claimedCount, trappedMinions: trapped, collectedItems, stageCleared };
+}
+
+/**
+ * Boss destroyed (spec 2.3 note / 2.7): with no flood-fill seed the entire
+ * remaining field is claimed at once — immediate stage clear. Trapped-minion
+ * and item rules apply exactly as in a normal closure; the closure score does
+ * not (the reward is the boss-kill bonus plus the over-80% bonus).
+ */
+export function claimAllRemaining(state: GameState): void {
+  const { grid } = state;
+  const newlyClaimed = new Uint8Array(grid.cells.length);
+  for (let i = 0; i < grid.cells.length; i++) {
+    if (grid.cells[i] === CellState.Unclaimed || grid.cells[i] === CellState.Trail) {
+      grid.cells[i] = CellState.Claimed;
+      newlyClaimed[i] = 1;
+    }
+  }
+  const trapped = destroyTrappedMinions(state, newlyClaimed);
+  applyTrapBonus(state, trapped);
+  collectClaimedItems(state);
+  state.claimRatio = claimRatio(grid);
+  checkStageClear(state);
+  state.sparks = [];
+  resetTrail(state);
+  state.player.mode = 'shield';
+  state.gridVersion++;
 }
 
 /**

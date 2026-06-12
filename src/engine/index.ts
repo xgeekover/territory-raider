@@ -5,6 +5,8 @@ import { STAGES } from './config/stages';
 import { updatePlayer } from './systems/movement';
 import { updateEnemies } from './systems/enemies';
 import { applyDeath, updatePlayerCollisions } from './systems/collision';
+import { spawnSparksFromContacts, updateSparks } from './systems/spark';
+import { fireLaser, updateLasers } from './systems/laser';
 
 export type EngineAction =
   | { type: 'confirm' } // Enter: start / next stage / back to title
@@ -79,10 +81,15 @@ export function createEngine(options: StateOptions = {}): Engine {
       state.player.invincibleFor = Math.max(0, state.player.invincibleFor - dt);
       updatePlayer(state, input, dt); // may commit a trail and clear the stage
       if (state.status === 'playing') {
+        updateLasers(state, dt); // may kill the boss and clear the stage
+      }
+      if (state.status === 'playing') {
         if (state.timeStopFor > 0) {
-          state.timeStopFor = Math.max(0, state.timeStopFor - dt);
+          state.timeStopFor = Math.max(0, state.timeStopFor - dt); // item 'T' freeze
         } else {
-          updateEnemies(state, dt);
+          const trailContacts = updateEnemies(state, dt);
+          spawnSparksFromContacts(state, trailContacts);
+          updateSparks(state, dt);
         }
         updatePlayerCollisions(state);
         if (state.playerHit) applyDeath(state);
@@ -119,7 +126,7 @@ export function createEngine(options: StateOptions = {}): Engine {
           publish();
           break;
         case 'fire':
-          // Laser arrives in M4.
+          if (fireLaser(state)) publish();
           break;
       }
     },
