@@ -22,6 +22,7 @@ import {
   ITEM_MIN_SEPARATION,
   ITEM_PLACEMENT_MARGIN,
   START_LIVES,
+  WANDERER_SPEED,
 } from '../config/constants';
 import { STAGES } from '../config/stages';
 
@@ -88,7 +89,7 @@ function spawnMinions(stage: StageConfig, grid: Grid, rng: Rng): MinionState[] {
         x: 4 + rng() * (width - 8),
         y: 4 + rng() * (height - 8),
       },
-      vel: { x: Math.cos(angle), y: Math.sin(angle) },
+      vel: { x: Math.cos(angle) * WANDERER_SPEED, y: Math.sin(angle) * WANDERER_SPEED },
       sparkCooldown: 0,
     });
   }

@@ -4,6 +4,7 @@ import { GameCanvas } from './ui/components/GameCanvas';
 import { Hud } from './ui/components/Hud';
 import { TitleScreen } from './ui/components/TitleScreen';
 import { PauseOverlay } from './ui/components/PauseOverlay';
+import { GameOverScreen } from './ui/components/GameOverScreen';
 import { loadHighScore, saveHighScore } from './ui/highscore';
 
 export default function App() {
@@ -26,6 +27,7 @@ export default function App() {
         <GameCanvas engine={engine} />
         {snapshot.status === 'title' && <TitleScreen highScore={highScore} />}
         {snapshot.status === 'paused' && <PauseOverlay />}
+        {snapshot.status === 'gameOver' && <GameOverScreen snapshot={snapshot} highScore={highScore} />}
       </div>
       <p className="text-xs text-zinc-600">
         ARROWS move · SPACE hold to draw · X laser · P pause · ENTER start
