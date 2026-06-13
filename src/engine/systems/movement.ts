@@ -12,10 +12,15 @@ import { commitTrail } from './claim';
  */
 export function updatePlayer(state: GameState, input: InputState, dt: number): void {
   const p = state.player;
-  p.moveCooldown = Math.max(0, p.moveCooldown - dt);
+  const period = 1 / (PLAYER_SPEED * p.speedMultiplier);
+  // Carry the sub-tick remainder forward (a true fixed-timestep accumulator),
+  // so the average step rate equals the configured speed instead of being
+  // quantized down by clamping to 0. Floor the debt at one period so a long
+  // block can't bank many steps and lurch the player on reopen (max 2 steps).
+  p.moveCooldown = Math.max(-period, p.moveCooldown - dt);
   while (p.moveCooldown <= 0 && state.status === 'playing') {
     if (!tryStep(state, input)) break;
-    p.moveCooldown += 1 / (PLAYER_SPEED * p.speedMultiplier);
+    p.moveCooldown += period;
   }
 }
 

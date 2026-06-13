@@ -103,6 +103,23 @@ describe('collision rules (spec 2.4)', () => {
     expect(state.playerHit).toBe(true);
   });
 
+  it('does not kill a drawing player through a claimed wall (line-of-sight)', () => {
+    const state = makeTestState();
+    // player drawing at (5,5); a claimed wall column at x=6 separates them
+    state.player.pos = { x: 5, y: 5 };
+    state.player.mode = 'drawing';
+    for (let y = 1; y <= 10; y++) state.grid.cells[y * state.grid.width + 6] = CellState.Claimed;
+    state.boss.pos = { x: 7.0, y: 5.5 }; // 1.5 cells away but behind the wall
+
+    updatePlayerCollisions(state);
+    expect(state.playerHit).toBe(false);
+
+    // remove the wall: now the boss really can touch the player
+    for (let y = 1; y <= 10; y++) state.grid.cells[y * state.grid.width + 6] = CellState.Unclaimed;
+    updatePlayerCollisions(state);
+    expect(state.playerHit).toBe(true);
+  });
+
   it('post-respawn invincibility suppresses contact deaths', () => {
     const state = makeTestState();
     drawThreeCells(state);
