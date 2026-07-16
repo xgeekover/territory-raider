@@ -4,3 +4,108 @@ html,
 body {
   background-color: #09090b;
 }
+
+/* --- UI juice: entrances, banners, celebration, HUD feedback ------------- */
+
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes bannerIn {
+  0% {
+    opacity: 0;
+    transform: translateY(-16px) scale(0.96);
+  }
+  12% {
+    opacity: 1;
+    transform: none;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes confettiFall {
+  0% {
+    transform: translateY(-8%) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(620px) rotate(680deg);
+    opacity: 0;
+  }
+}
+
+@keyframes scorePop {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.25);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes glowPulse {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 14px rgba(34, 211, 238, 0.55));
+  }
+  50% {
+    filter: drop-shadow(0 0 30px rgba(34, 211, 238, 0.95));
+  }
+}
+
+@keyframes gridPan {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 48px 48px;
+  }
+}
+
+/* Overlay screens slide/scale in instead of popping. */
+.overlay-in {
+  animation: popIn 0.28s ease-out both;
+}
+
+/* Drifting neon grid behind the title screen. */
+.title-grid {
+  background-image:
+    linear-gradient(rgba(34, 211, 238, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 211, 238, 0.07) 1px, transparent 1px);
+  background-size: 48px 48px;
+  animation: gridPan 4s linear infinite;
+}
+
+.stage-banner {
+  animation: bannerIn 1.8s ease-in-out both;
+}
+
+.score-pop {
+  animation: scorePop 0.3s ease-out;
+}
+
+.title-glow {
+  animation: glowPulse 2.4s ease-in-out infinite;
+}
+
+.confetti-piece {
+  position: absolute;
+  top: -12px;
+  animation: confettiFall linear both;
+}

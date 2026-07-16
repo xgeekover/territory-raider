@@ -71,6 +71,17 @@ export interface BossState {
   alive: boolean;
   /** Seconds until this enemy may spawn another spark. */
   sparkCooldown: number;
+  /** Seconds until the next projectile volley (boss battle). */
+  fireCooldown: number;
+}
+
+/** Boss projectile: flies through unclaimed space, splashes on solid cells. */
+export interface BossProjectile {
+  id: number;
+  /** Float position in cell units. */
+  pos: Vec2;
+  /** Velocity in cells/sec. */
+  vel: Vec2;
 }
 
 export interface WandererState {
@@ -122,6 +133,16 @@ export interface StageConfig {
   sparkSpeed: number; // trail cells/sec
   itemTiles: ItemCode[]; // item kinds appearing on this stage
   bgColor: string; // background revealed on claimed area (per-stage)
+  /**
+   * True on "boss battle" stages (every 5th). The boss actively fights back —
+   * aimed projectile volleys + rage phases. On non-boss stages the boss only
+   * wanders and contact-kills a drawing player (the original behavior).
+   */
+  bossBattle?: boolean;
+  /** Seconds between boss volleys at rage 0 (default BOSS_FIRE_COOLDOWN). */
+  bossFireCooldown?: number;
+  /** Projectile speed in cells/sec (default PROJECTILE_SPEED). */
+  projectileSpeed?: number;
 }
 
 /** Immutable snapshot consumed by React HUD via useSyncExternalStore. */
@@ -131,10 +152,14 @@ export interface HudSnapshot {
   lives: number;
   stage: number; // 1-based for display
   claimPct: number; // 0..100, one decimal
+  stageTimeLeft: number; // whole seconds left on the stage countdown
   laserAmmo: number;
   timeStopFor: number; // seconds remaining, 1 decimal
   speedBoost: boolean;
   lastClearBonus: number;
   bossHp: number;
+  bossHpMax: number;
   bossAlive: boolean;
+  /** 0 = calm, 1 = enraged (≥40% claimed), 2 = fury (≥65%). */
+  bossRage: number;
 }

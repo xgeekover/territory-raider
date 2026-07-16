@@ -15,6 +15,14 @@ export const TEST_STAGE: StageConfig = {
   bgColor: '#123456',
 };
 
+/** Like TEST_STAGE but with the boss battle active (projectiles + rage). */
+export const TEST_BOSS_STAGE: StageConfig = {
+  ...TEST_STAGE,
+  bossBattle: true,
+  bossFireCooldown: 2.8,
+  projectileSpeed: 15,
+};
+
 /** Deterministic small-grid state for engine unit tests (default 16x12). */
 export function makeTestState(options: StateOptions = {}): GameState {
   return createStageState({

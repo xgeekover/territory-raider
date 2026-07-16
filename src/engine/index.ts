@@ -1,12 +1,12 @@
 import { createStageState } from './core/gameState';
 import type { GameState, StateOptions } from './core/gameState';
 import type { HudSnapshot, InputState } from './core/types';
-import { STAGES } from './config/stages';
 import { updatePlayer } from './systems/movement';
-import { updateEnemies } from './systems/enemies';
+import { enemySpeedScale, updateEnemies } from './systems/enemies';
 import { applyDeath, updatePlayerCollisions } from './systems/collision';
 import { spawnSparksFromContacts, updateSparks } from './systems/spark';
 import { fireLaser, updateLasers } from './systems/laser';
+import { bossRageLevel, updateBossAttack } from './systems/bossAttack';
 
 export type EngineAction =
   | { type: 'confirm' } // Enter: start / next stage / back to title
@@ -31,12 +31,16 @@ function makeSnapshot(state: GameState): HudSnapshot {
     lives: state.lives,
     stage: state.stageIndex + 1,
     claimPct: Math.round(state.claimRatio * 1000) / 10,
+    // Whole seconds (rounded up) so the HUD re-renders ~1x/sec, not every tick.
+    stageTimeLeft: Math.ceil(state.stageTimeLeft),
     laserAmmo: state.laserAmmo,
     timeStopFor: Math.max(0, Math.ceil(state.timeStopFor * 10) / 10),
     speedBoost: state.player.speedMultiplier > 1,
     lastClearBonus: state.lastClearBonus,
     bossHp: state.boss.hp,
+    bossHpMax: state.stage.bossHp,
     bossAlive: state.boss.alive,
+    bossRage: bossRageLevel(state),
   };
 }
 
@@ -47,18 +51,21 @@ function snapshotsEqual(a: HudSnapshot, b: HudSnapshot): boolean {
     a.lives === b.lives &&
     a.stage === b.stage &&
     a.claimPct === b.claimPct &&
+    a.stageTimeLeft === b.stageTimeLeft &&
     a.laserAmmo === b.laserAmmo &&
     a.timeStopFor === b.timeStopFor &&
     a.speedBoost === b.speedBoost &&
     a.lastClearBonus === b.lastClearBonus &&
     a.bossHp === b.bossHp &&
-    a.bossAlive === b.bossAlive
+    a.bossHpMax === b.bossHpMax &&
+    a.bossAlive === b.bossAlive &&
+    a.bossRage === b.bossRage
   );
 }
 
 export function createEngine(options: StateOptions = {}): Engine {
   let state = createStageState(options);
-  state.status = 'title';
+  state.status = options.startPlaying ? 'playing' : 'title';
   let snapshot = makeSnapshot(state);
   const listeners = new Set<() => void>();
 
@@ -87,12 +94,21 @@ export function createEngine(options: StateOptions = {}): Engine {
         if (state.timeStopFor > 0) {
           state.timeStopFor = Math.max(0, state.timeStopFor - dt); // item 'T' freeze
         } else {
-          const trailContacts = updateEnemies(state, dt);
+          // Enemies cover more ground per tick as the stage clock runs low.
+          const edt = dt * enemySpeedScale(state);
+          const trailContacts = updateEnemies(state, edt);
           spawnSparksFromContacts(state, trailContacts);
-          updateSparks(state, dt);
+          updateSparks(state, edt);
+          updateBossAttack(state, edt); // boss battle: volleys + projectile flight
         }
         updatePlayerCollisions(state);
         if (state.playerHit) applyDeath(state);
+      }
+      // Stage countdown (real time, keeps ticking through a Time Stop). Running
+      // it out costs a life; applyDeath refills the clock for the next life.
+      if (state.status === 'playing') {
+        state.stageTimeLeft = Math.max(0, state.stageTimeLeft - dt);
+        if (state.stageTimeLeft <= 0) applyDeath(state);
       }
       publish();
     },
@@ -104,8 +120,9 @@ export function createEngine(options: StateOptions = {}): Engine {
             newGame();
           } else if (state.status === 'stageClear') {
             const nextIndex = state.stageIndex + 1;
-            const stages = options.stages ?? STAGES;
-            if (nextIndex >= stages.length) {
+            // Endless: always advance to the next generated stage. Only a
+            // pinned finite stage list (tests) can reach 'victory' by running out.
+            if (options.stages && nextIndex >= options.stages.length) {
               state.status = 'victory';
             } else {
               state = createStageState(

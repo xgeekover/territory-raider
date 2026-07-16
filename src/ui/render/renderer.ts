@@ -1,5 +1,7 @@
 import { CellState } from '../../engine/core/types';
+import type { ItemCode } from '../../engine/core/types';
 import type { GameState } from '../../engine/core/gameState';
+import { bossRageLevel } from '../../engine/systems/bossAttack';
 import {
   BOSS_RADIUS,
   CELL_PX,
@@ -20,8 +22,6 @@ const COLORS = {
   spark: '#fde047', // yellow-300
   laser: '#67e8f9',
   itemBox: '#18181b',
-  itemBorder: '#22d3ee',
-  itemText: '#a5f3fc',
 } as const;
 
 export interface Renderer {
@@ -109,30 +109,76 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
     ctx.shadowBlur = 0;
   }
 
+  /** Rage escalation: hotter ring color, faster spin, fury adds an outer ring. */
+  const RAGE_RING = ['#e879f9', '#fb923c', '#fb7185'] as const;
+  const RAGE_SPIN = [400, 240, 150] as const;
+
   function drawBoss(state: GameState, timeMs: number): void {
     const b = state.boss;
     if (!b.alive) return;
+    const rage = bossRageLevel(state);
     const cx = b.pos.x * CELL_PX;
     const cy = b.pos.y * CELL_PX;
     const r = BOSS_RADIUS * CELL_PX;
-    const spin = timeMs / 400;
-    ctx.shadowColor = COLORS.boss;
-    ctx.shadowBlur = 14;
-    ctx.strokeStyle = COLORS.boss;
+    const spin = timeMs / RAGE_SPIN[rage]!;
+    const ring = RAGE_RING[rage]!;
+
+    const hex = (radius: number, phase: number): void => {
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = phase + (i * Math.PI) / 3;
+        const px = cx + Math.cos(a) * radius;
+        const py = cy + Math.sin(a) * radius;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+    };
+
+    ctx.shadowColor = ring;
+    ctx.shadowBlur = 14 + rage * 4;
+    ctx.strokeStyle = ring;
     ctx.fillStyle = COLORS.bossCore;
     ctx.lineWidth = 2;
-    ctx.beginPath();
-    for (let i = 0; i < 6; i++) {
-      const a = spin + (i * Math.PI) / 3;
-      const px = cx + Math.cos(a) * r;
-      const py = cy + Math.sin(a) * r;
-      if (i === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
-    }
-    ctx.closePath();
+    hex(r, spin);
     ctx.fill();
     ctx.stroke();
+    if (rage === 2) {
+      // Fury: counter-rotating outer ring.
+      ctx.lineWidth = 1.2;
+      hex(r * 1.45, -spin * 0.7);
+      ctx.stroke();
+    }
     ctx.shadowBlur = 0;
+  }
+
+  function drawProjectiles(state: GameState): void {
+    for (const shot of state.projectiles) {
+      const cx = shot.pos.x * CELL_PX;
+      const cy = shot.pos.y * CELL_PX;
+      // Short motion tail opposite the velocity.
+      const speed = Math.hypot(shot.vel.x, shot.vel.y) || 1;
+      const tx = cx - (shot.vel.x / speed) * CELL_PX * 1.6;
+      const ty = cy - (shot.vel.y / speed) * CELL_PX * 1.6;
+      ctx.strokeStyle = 'rgba(251,113,133,0.45)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(tx, ty);
+      ctx.lineTo(cx, cy);
+      ctx.stroke();
+
+      ctx.shadowColor = COLORS.wanderer;
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = COLORS.wanderer;
+      ctx.beginPath();
+      ctx.arc(cx, cy, CELL_PX * 0.65, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#fff1f2';
+      ctx.beginPath();
+      ctx.arc(cx, cy, CELL_PX * 0.25, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   function drawMinions(state: GameState, timeMs: number): void {
@@ -203,26 +249,124 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
     ctx.shadowBlur = 0;
   }
 
-  function drawItems(state: GameState): void {
-    ctx.font = `bold ${CELL_PX * 2.4}px ui-monospace, monospace`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    for (const item of state.items) {
-      if (item.collected) continue;
+  /** Per-item accent color + vector glyph (icons, not letters — readable at 24px). */
+  const ITEM_COLOR: Record<ItemCode, string> = {
+    T: '#7dd3fc', // freeze — ice blue snowflake
+    S: '#f0abfc', // speed — fuchsia lightning bolt
+    L: '#67e8f9', // laser — cyan crosshair
+    P: '#fde047', // points — gold star
+    C: '#6ee7b7', // sweep — emerald burst
+  };
+
+  function drawItemGlyph(code: ItemCode, cx: number, cy: number, r: number): void {
+    ctx.lineWidth = Math.max(1.2, r * 0.18);
+    ctx.lineCap = 'round';
+    switch (code) {
+      case 'T': {
+        // Snowflake: 6 spokes with V-ticks near the tips.
+        for (let i = 0; i < 6; i++) {
+          const a = (i * Math.PI) / 3;
+          const dx = Math.cos(a);
+          const dy = Math.sin(a);
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.lineTo(cx + dx * r, cy + dy * r);
+          ctx.stroke();
+          const tx = cx + dx * r * 0.62;
+          const ty = cy + dy * r * 0.62;
+          const px = -dy;
+          const py = dx;
+          ctx.beginPath();
+          ctx.moveTo(tx + (px - dx) * r * 0.22, ty + (py - dy) * r * 0.22);
+          ctx.lineTo(tx, ty);
+          ctx.lineTo(tx + (-px - dx) * r * 0.22, ty + (-py - dy) * r * 0.22);
+          ctx.stroke();
+        }
+        break;
+      }
+      case 'S': {
+        // Lightning bolt.
+        ctx.beginPath();
+        ctx.moveTo(cx + r * 0.3, cy - r);
+        ctx.lineTo(cx - r * 0.45, cy + r * 0.18);
+        ctx.lineTo(cx - r * 0.05, cy + r * 0.18);
+        ctx.lineTo(cx - r * 0.3, cy + r);
+        ctx.lineTo(cx + r * 0.45, cy - r * 0.18);
+        ctx.lineTo(cx + r * 0.05, cy - r * 0.18);
+        ctx.closePath();
+        ctx.fill();
+        break;
+      }
+      case 'L': {
+        // Crosshair: ring + 4 ticks + core dot.
+        ctx.beginPath();
+        ctx.arc(cx, cy, r * 0.55, 0, Math.PI * 2);
+        ctx.stroke();
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+          ctx.beginPath();
+          ctx.moveTo(cx + dx * r * 0.7, cy + dy * r * 0.7);
+          ctx.lineTo(cx + dx * r, cy + dy * r);
+          ctx.stroke();
+        }
+        ctx.beginPath();
+        ctx.arc(cx, cy, r * 0.14, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      case 'P': {
+        // 5-point star.
+        ctx.beginPath();
+        for (let i = 0; i < 10; i++) {
+          const a = -Math.PI / 2 + (i * Math.PI) / 5;
+          const rad = i % 2 === 0 ? r : r * 0.45;
+          const px = cx + Math.cos(a) * rad;
+          const py = cy + Math.sin(a) * rad;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+        break;
+      }
+      case 'C': {
+        // Sweep burst: 8 rays, alternating long/short.
+        for (let i = 0; i < 8; i++) {
+          const a = (i * Math.PI) / 4;
+          const len = i % 2 === 0 ? r : r * 0.55;
+          ctx.beginPath();
+          ctx.moveTo(cx + Math.cos(a) * r * 0.25, cy + Math.sin(a) * r * 0.25);
+          ctx.lineTo(cx + Math.cos(a) * len, cy + Math.sin(a) * len);
+          ctx.stroke();
+        }
+        break;
+      }
+    }
+  }
+
+  function drawItems(state: GameState, timeMs: number): void {
+    state.items.forEach((item, i) => {
+      if (item.collected) return;
       const cx = (item.cell.x + 0.5) * CELL_PX;
-      const cy = (item.cell.y + 0.5) * CELL_PX;
+      // Gentle bob, phase-shifted per item so they don't move in lockstep.
+      const bob = Math.sin(timeMs / 320 + i * 1.7) * CELL_PX * 0.25;
+      const cy = (item.cell.y + 0.5) * CELL_PX + bob;
       const s = CELL_PX * 4;
+      const color = ITEM_COLOR[item.code];
+      const pulse = 6 + 3 * Math.sin(timeMs / 240 + i);
+
       ctx.fillStyle = COLORS.itemBox;
-      ctx.strokeStyle = COLORS.itemBorder;
-      ctx.shadowColor = COLORS.itemBorder;
-      ctx.shadowBlur = 8;
+      ctx.strokeStyle = color;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = pulse;
       ctx.lineWidth = 1.5;
       ctx.fillRect(cx - s / 2, cy - s / 2, s, s);
       ctx.strokeRect(cx - s / 2, cy - s / 2, s, s);
       ctx.shadowBlur = 0;
-      ctx.fillStyle = COLORS.itemText;
-      ctx.fillText(item.code, cx, cy + 1);
-    }
+
+      ctx.fillStyle = color;
+      ctx.strokeStyle = color;
+      drawItemGlyph(item.code, cx, cy, CELL_PX * 1.35);
+    });
   }
 
   return {
@@ -234,11 +378,12 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
         staticGrid = state.grid;
       }
       ctx.drawImage(staticLayer, 0, 0);
-      drawItems(state);
+      drawItems(state, timeMs);
       drawTrail(state);
       drawSparks(state);
       drawMinions(state, timeMs);
       drawBoss(state, timeMs);
+      drawProjectiles(state);
       drawLasers(state);
       drawPlayer(state, timeMs);
     },

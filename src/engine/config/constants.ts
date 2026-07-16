@@ -22,6 +22,18 @@ export const SPEED_BOOST_MULT = 1.5;
 export const RESPAWN_INVINCIBILITY = 2;
 export const START_LIVES = 3;
 
+/**
+ * Per-stage (per-life) countdown. Running it out costs a life; the clock is
+ * refilled on every stage entry and on every respawn. As it drains, enemies
+ * speed up to pile on pressure: below WARN they move a bit faster, below DANGER
+ * faster still (dt for every enemy system is multiplied by the matching scale).
+ */
+export const STAGE_TIME_LIMIT = 60; // seconds per life on a stage
+export const STAGE_TIME_WARN = 20; // enemies speed up at/below this many seconds left
+export const STAGE_TIME_DANGER = 10; // enemies speed up more at/below this
+export const ENEMY_SPEED_SCALE_WARN = 1.25;
+export const ENEMY_SPEED_SCALE_DANGER = 1.5;
+
 /** Stage clears when claimed ratio (interior cells) reaches this. */
 export const CLEAR_RATIO = 0.8;
 /** A single closure claiming at least this fraction of the interior doubles its score. */
@@ -51,6 +63,20 @@ export const EDGE_CRAWLER_SPEED = 14; // boundary cells/sec
 export const SPARK_SPAWN_COOLDOWN = 1.5;
 /** Boss velocity perturbation on each bounce, in degrees (+/-). */
 export const BOUNCE_JITTER_DEG = 15;
+
+/**
+ * Boss battle (spec: "the Core fights back"). The boss fires aimed projectiles
+ * on a cooldown; claiming territory enrages it — rage 1 fires faster, rage 2
+ * adds a 3-shot fan. Projectiles live only in unclaimed space (they splash on
+ * claimed/border cells) and, like every enemy, only kill a DRAWING player.
+ */
+export const BOSS_FIRE_COOLDOWN = 2.8; // seconds between volleys (rage 0, default)
+export const BOSS_RAGE1_RATIO = 0.4; // claimed ratio that triggers rage 1
+export const BOSS_RAGE2_RATIO = 0.65; // claimed ratio that triggers rage 2
+export const BOSS_RAGE_COOLDOWN_MULT = [1, 0.62, 0.42] as const; // per rage level
+export const PROJECTILE_SPEED = 15; // cells/sec (default; stages may override)
+export const PROJECTILE_CONTACT_DIST = 1.0; // kill radius vs a drawing player
+export const PROJECTILE_FAN_RAD = 0.42; // rage-2 fan spread (radians from center)
 
 /** Contact distances (cell units, center-to-center) for player death while drawing. */
 export const BOSS_CONTACT_DIST = 2.0;

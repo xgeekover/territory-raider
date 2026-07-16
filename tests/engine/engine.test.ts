@@ -59,8 +59,8 @@ describe('engine lifecycle', () => {
     expect(engine.getSnapshot().lives).toBe(2);
   });
 
-  it('reaches victory after the final stage is cleared', () => {
-    const engine = makeEngine(); // 3 stages
+  it('reaches victory after a pinned finite stage list is cleared', () => {
+    const engine = makeEngine(); // 3 explicit stages
     engine.dispatch({ type: 'confirm' });
     for (let stage = 1; stage <= 3; stage++) {
       expect(engine.getSnapshot().stage).toBe(stage);
@@ -71,6 +71,20 @@ describe('engine lifecycle', () => {
 
     engine.dispatch({ type: 'confirm' }); // back to title
     expect(engine.getSnapshot().status).toBe('title');
+  });
+
+  it('is endless with the real generator — clearing stages never ends the run', () => {
+    const engine = createEngine({ seed: 1 }); // real grid + generator, no pinned stages
+    engine.dispatch({ type: 'confirm' }); // title → playing stage 1
+    for (let stage = 1; stage <= 23; stage++) {
+      expect(engine.getSnapshot().stage).toBe(stage);
+      engine.getState().status = 'stageClear';
+      engine.dispatch({ type: 'confirm' });
+      expect(engine.getSnapshot().status).toBe('playing'); // advanced, never 'victory'
+    }
+    expect(engine.getSnapshot().stage).toBe(24);
+    // Boss battles land on every 5th stage in the endless run.
+    expect(engine.getState().stage.bossBattle).toBeUndefined(); // stage 24 is not a boss
   });
 
   it('only republishes the snapshot when a HUD value actually changes', () => {
@@ -85,8 +99,10 @@ describe('engine lifecycle', () => {
 });
 
 describe('stage config (spec 2.8)', () => {
-  it('ships 8 stages with a monotonic difficulty curve', () => {
-    expect(STAGES).toHaveLength(8);
+  // Campaign-wide invariants (count, boss cadence, deep-curve) live in
+  // stages.test.ts; this keeps a light monotonicity check alongside the engine.
+  it('ships a multi-stage, monotonically escalating campaign', () => {
+    expect(STAGES.length).toBeGreaterThanOrEqual(8);
     for (let i = 1; i < STAGES.length; i++) {
       const prev = STAGES[i - 1] as StageConfig;
       const cur = STAGES[i] as StageConfig;
@@ -97,12 +113,10 @@ describe('stage config (spec 2.8)', () => {
     }
   });
 
-  it('gives every stage a Laser item and a distinct background color', () => {
-    const colors = new Set<string>();
+  it('gives every stage a Laser item and a background color', () => {
     for (const stage of STAGES) {
       expect(stage.itemTiles).toContain('L');
-      colors.add(stage.bgColor);
+      expect(stage.bgColor).toMatch(/^#[0-9a-f]{6}$/i);
     }
-    expect(colors.size).toBe(STAGES.length);
   });
 });

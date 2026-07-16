@@ -6,6 +6,7 @@ import {
   BOSS_CONTACT_DIST,
   CRAWLER_CONTACT_DIST,
   RESPAWN_INVINCIBILITY,
+  STAGE_TIME_LIMIT,
   WANDERER_CONTACT_DIST,
 } from '../config/constants';
 
@@ -79,7 +80,8 @@ export function updatePlayerCollisions(state: GameState): void {
 /**
  * Death (spec 2.5): lose a life, roll the whole trail back to UNCLAIMED
  * (ratio unchanged), clear sparks, respawn at the trail start cell with 2s of
- * blinking invincibility. Zero lives ends the game.
+ * blinking invincibility. Zero lives ends the game. Also covers a stage
+ * time-out, so the fresh life starts with a full countdown.
  */
 export function applyDeath(state: GameState): void {
   state.playerHit = false;
@@ -89,6 +91,11 @@ export function applyDeath(state: GameState): void {
   state.player.pos = { ...respawn };
   state.player.moveCooldown = 0;
   state.player.invincibleFor = RESPAWN_INVINCIBILITY;
+  state.stageTimeLeft = STAGE_TIME_LIMIT; // new life → fresh clock
+  // Boss battle fairness: clear the volley in flight and grant a firing grace
+  // at least as long as the respawn invincibility.
+  state.projectiles = [];
+  state.boss.fireCooldown = Math.max(state.boss.fireCooldown, RESPAWN_INVINCIBILITY);
   if (state.lives <= 0) {
     state.status = 'gameOver';
   }

@@ -1,0 +1,51 @@
+appId: com.territoryraider.game
+productName: Territory Raider
+copyright: Original work — Volfied/Qix genre mechanics only.
+
+directories:
+  output: release
+  buildResources: build
+
+# Ship only the built renderer + compiled main/preload. Source and maps stay out.
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - '!**/*.map'
+
+# Deterministic, reproducible packaging in CI.
+npmRebuild: false
+electronLanguages:
+  - en
+
+mac:
+  icon: build/icon.icns
+  category: public.app-category.games
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+    - target: zip
+      arch: [x64, arm64]
+  # Unsigned artifacts — code-signing/notarization is a later, secret-gated step.
+  identity: null
+
+win:
+  icon: build/icon.png # .ico is derived automatically at package time
+  target:
+    - target: nsis # installer (.exe, choose install dir)
+      arch: [x64]
+    - target: portable # non-installer single .exe, runs anywhere
+      arch: [x64]
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+
+linux:
+  icon: build/icon.png
+  category: Game
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]

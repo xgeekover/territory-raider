@@ -1,5 +1,6 @@
 import { CellState, DIR_VECTORS } from './types';
 import type {
+  BossProjectile,
   BossState,
   GameStatus,
   ItemCode,
@@ -17,14 +18,16 @@ import type { Grid } from './grid';
 import { mulberry32 } from './rng';
 import type { Rng } from './rng';
 import {
+  BOSS_FIRE_COOLDOWN,
   GRID_HEIGHT,
   GRID_WIDTH,
   ITEM_MIN_SEPARATION,
   ITEM_PLACEMENT_MARGIN,
+  STAGE_TIME_LIMIT,
   START_LIVES,
   WANDERER_SPEED,
 } from '../config/constants';
-import { STAGES } from '../config/stages';
+import { getStage } from '../config/stages';
 
 export interface GameState {
   status: GameStatus;
@@ -39,10 +42,17 @@ export interface GameState {
   minions: MinionState[];
   sparks: SparkState[];
   lasers: LaserShot[];
+  /** Boss-battle projectiles in flight (unclaimed space only). */
+  projectiles: BossProjectile[];
   items: ItemTile[];
   score: number;
   lives: number;
   claimRatio: number;
+  /**
+   * Seconds left on the stage countdown for the current life. Refilled to
+   * STAGE_TIME_LIMIT on stage entry and on every respawn; hitting 0 costs a life.
+   */
+  stageTimeLeft: number;
   /** Seconds of remaining Time Stop (item 'T'); freezes all enemies and sparks. */
   timeStopFor: number;
   laserAmmo: number;
@@ -61,6 +71,8 @@ export interface StateOptions {
   stageIndex?: number;
   seed?: number;
   stages?: StageConfig[];
+  /** Start already in play instead of on the title screen (tests / dev stage-select). */
+  startPlaying?: boolean;
 }
 
 let nextMinionId = 1;
@@ -73,6 +85,8 @@ function spawnBoss(stage: StageConfig, width: number, height: number, rng: Rng):
     hp: stage.bossHp,
     alive: true,
     sparkCooldown: 0,
+    // First volley comes after one full cooldown — no shot on stage entry.
+    fireCooldown: stage.bossFireCooldown ?? BOSS_FIRE_COOLDOWN,
   };
 }
 
@@ -143,9 +157,12 @@ export function createStageState(
 ): GameState {
   const width = options.width ?? GRID_WIDTH;
   const height = options.height ?? GRID_HEIGHT;
-  const stages = options.stages ?? STAGES;
   const stageIndex = options.stageIndex ?? 0;
-  const stage = stages[Math.min(stageIndex, stages.length - 1)] as StageConfig;
+  // Tests may pin an explicit finite stage list; the real game generates each
+  // stage on demand so the campaign is endless.
+  const stage = options.stages
+    ? (options.stages[Math.min(stageIndex, options.stages.length - 1)] as StageConfig)
+    : getStage(stageIndex);
   const rng = mulberry32(options.seed ?? (Math.random() * 0xffffffff) >>> 0);
   const grid = createGrid(width, height);
 
@@ -177,10 +194,12 @@ export function createStageState(
     minions: spawnMinions(stage, grid, rng),
     sparks: [],
     lasers: [],
+    projectiles: [],
     items: placeItems(stage.itemTiles, grid, rng),
     score: carry?.score ?? 0,
     lives: carry?.lives ?? START_LIVES,
     claimRatio: 0,
+    stageTimeLeft: STAGE_TIME_LIMIT,
     timeStopFor: 0,
     laserAmmo: 0,
     playerHit: false,

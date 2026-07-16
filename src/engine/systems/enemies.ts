@@ -6,8 +6,25 @@ import type { GameState } from '../core/gameState';
 import {
   BOUNCE_JITTER_DEG,
   EDGE_CRAWLER_SPEED,
+  ENEMY_SPEED_SCALE_DANGER,
+  ENEMY_SPEED_SCALE_WARN,
+  STAGE_TIME_DANGER,
+  STAGE_TIME_WARN,
   WANDERER_SPEED,
 } from '../config/constants';
+
+/**
+ * Time-pressure speed multiplier: enemies move at normal speed until the stage
+ * clock drops into the WARN window, then faster, then faster still in DANGER.
+ * Applied by scaling the dt fed to every enemy system, so speeds stay pinned to
+ * their configured values while covering proportionally more ground per tick.
+ */
+export function enemySpeedScale(state: GameState): number {
+  const left = state.stageTimeLeft;
+  if (left <= STAGE_TIME_DANGER) return ENEMY_SPEED_SCALE_DANGER;
+  if (left <= STAGE_TIME_WARN) return ENEMY_SPEED_SCALE_WARN;
+  return 1;
+}
 
 /** Sub-step cap (cells) so fast enemies cannot tunnel through 1-cell walls. */
 const MAX_SUBSTEP = 0.4;
