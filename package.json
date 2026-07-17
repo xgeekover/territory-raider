@@ -1,7 +1,7 @@
 {
   "name": "territory-raider",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "main": "dist-electron/main.cjs",
   "description": "Territory Raider — a Volfied/Qix-style territory-capture game (web + desktop).",
