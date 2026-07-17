@@ -1,117 +1,106 @@
 # Territory Raider
 
-A Volfied/Qix-style **territory-capture** game built with **React 18 + TypeScript (strict) + Canvas 2D** — no game-engine libraries. Cut into the dark, fence off the boss, and claim 80% of the field across a 30-stage campaign with a **boss battle every 5th stage**.
+**한국어** · [English](./docs/README.en.md)
 
-The name, art, and audio are original; only the genre mechanics are borrowed. All visuals are shape-and-code generated on a dark zinc/slate palette with cyan/fuchsia neon accents.
+Volfied/Qix 스타일의 **땅따먹기(영역 점유)** 게임입니다. **React 18 + TypeScript(strict) + Canvas 2D**만으로 만들었고 게임 엔진 라이브러리는 쓰지 않았습니다. 어둠 속으로 선을 그어 보스를 가두고, 필드의 80%를 점유하세요. 스테이지는 무한히 이어지며 **5스테이지마다 보스전**이 벌어집니다.
 
-![Territory Raider gameplay](docs/gameplay.gif)
+이름·아트·사운드는 모두 오리지널이며, 장르 메커니즘만 빌려왔습니다. 모든 비주얼은 다크 zinc/slate 팔레트 위에 시안/푸크시아 네온 악센트로 코드가 직접 그립니다.
 
-*Cutting territory out of the dark while the stage clock drains — the enemies accelerate as **TIME** turns amber (20 s) and then red (10 s).*
+![Territory Raider 게임플레이](docs/gameplay.gif)
 
-## Quick start
+*어둠을 잘라내 영역을 점유하는 동안 스테이지 시계가 줄어듭니다 — **TIME**이 앰버(20초), 레드(10초)로 바뀌면 적들이 빨라집니다.*
+
+## 빠른 시작
 
 ```bash
 npm install
 npm run dev        # http://localhost:5173
-npm test           # headless engine unit tests (Vitest)
-npm run build      # tsc --noEmit + production build
-npm run typecheck  # tsc --noEmit only
+npm test           # 헤드리스 엔진 단위 테스트 (Vitest)
+npm run build      # tsc --noEmit + 프로덕션 빌드
+npm run typecheck  # tsc --noEmit만
 ```
 
-## Desktop app (Electron)
+## 데스크톱 앱 (Electron)
 
-The same game ships as a native desktop app (macOS · Windows · Linux) via a thin,
-security-hardened Electron shell. The web build is untouched — the renderer stays
-a pure Vite app; only `electron/` (main + preload) and `scripts/` are added.
+같은 게임이 얇고 보안-강화된 Electron 셸을 통해 네이티브 데스크톱 앱(macOS · Windows · Linux)으로도 제공됩니다. 웹 빌드는 그대로 두고 — 렌더러는 순수 Vite 앱 그대로 — `electron/`(main + preload)과 `scripts/`만 추가됩니다.
 
 ```bash
 npm run dev:desktop   # Electron + Vite HMR
-npm run verify        # gate: typecheck · lint · test · build:desktop
-npm run dist          # build for the current OS → release/
-npm run dist:mac      # dmg (installer) + zip (portable), x64 + arm64
-npm run dist:win      # nsis (installer) + portable single-exe, x64
-npm run dist:linux    # deb (installer) + AppImage (portable), x64
+npm run verify        # 게이트: typecheck · lint · test · build:desktop
+npm run dist          # 현재 OS용 패키징 → release/
+npm run dist:mac      # dmg(설치본) + zip(무설치본), x64 + arm64
+npm run dist:win      # NSIS(설치본) + 포터블 단일 exe, x64
+npm run dist:linux    # deb(설치본) + AppImage(무설치본), x64
 ```
 
-Every platform ships **both** an installer and a no-install ("portable") build:
+모든 플랫폼에 **설치본과 무설치(포터블) 빌드가 함께** 제공됩니다:
 
-| OS | Installer | Portable / no-install |
+| OS | 설치본 | 무설치본 |
 |---|---|---|
-| **macOS** | `.dmg` (x64 + arm64) | `.zip` (unzip → run `.app`) |
-| **Windows** | `.exe` NSIS setup | `.exe` portable (double-click, no install) |
-| **Linux** | `.deb` | `.AppImage` (chmod +x → run) |
+| **macOS** | `.dmg` (x64 + arm64) | `.zip` (압축 해제 → `.app` 실행) |
+| **Windows** | `.exe` NSIS 설치 마법사 | 포터블 `.exe` (더블클릭, 설치 불필요) |
+| **Linux** | `.deb` | `.AppImage` (chmod +x → 실행) |
 
-Cross-OS packaging is done in CI: pushing a `vX.Y.Z` tag runs
-[`.github/workflows/release.yml`](./.github/workflows/release.yml), which builds all
-six artifacts on native macOS/Windows/Linux runners and attaches them to a draft
-GitHub Release. Builds are currently **unsigned** (macOS Gatekeeper / Windows
-SmartScreen will warn); signing is a later, secret-gated step.
+크로스-OS 패키징은 CI가 담당합니다: `vX.Y.Z` 태그를 푸시하면
+[`.github/workflows/release.yml`](./.github/workflows/release.yml)이 macOS/Windows/Linux
+네이티브 러너에서 6종 아티팩트를 모두 빌드해 드래프트 GitHub Release에 첨부합니다.
+현재 빌드는 **미서명**입니다(macOS Gatekeeper / Windows SmartScreen 경고 발생 —
+macOS는 우클릭 → 열기, Windows는 "추가 정보 → 실행"). 코드 서명은 인증서 확보 후
+시크릿으로 붙이는 후속 단계입니다.
 
-High scores persist to a file in the OS user-data dir (via a whitelisted IPC
-bridge on `window.desktop`); the web build falls back to `localStorage`
-automatically. Security posture, build design, and the full delivery pipeline
-(analysis → design → dev → test → quality → feedback → CI/CD → orchestration)
-are documented under [`docs/pipeline/`](./docs/pipeline).
+> allow-scripts 샌드박스 환경에서 `npm install`이 Electron 바이너리 다운로드를 건너뛰면
+> `node node_modules/electron/install.js`를 한 번 실행해 주세요.
 
-> allow-scripts sandbox only: if `npm install` skips Electron's binary download,
-> run `node node_modules/electron/install.js` once.
+## 이펙트 & 사운드 (juice 레이어)
 
-## Juice layer (effects & audio)
+모든 피드백은 에셋 없이 코드로 생성되며, 엔진은 건드리지 않고 그 위에 얹혀 있습니다:
 
-All feedback is code-generated (no assets), layered on top of the untouched engine:
+- **신스 오디오** (`src/ui/fx/audio.ts`) — 점유·아이템·레이저·사망·스파크·스테이지
+  클리어·보스 킬에 WebAudio 오실레이터 효과음, 플레이 중에는 낮은 앰비언트 패드.
+  `M`으로 음소거, 설정은 저장됩니다.
+- **캔버스 이펙트** (`src/ui/fx/fx.ts`) — 파티클 버스트, 떠오르는 `+점수` 팝업, 전장
+  플래시, 화면 흔들림, 그리고 그리는 동안 고동치는 위험 비네트(스파크가 트레일을
+  추적 중이면 로즈색으로 변함).
+- **상태 워처** (`src/ui/fx/watcher.ts`) — 매 프레임 엔진 상태를 diff해 위 효과를
+  전부 파생시킵니다. 엔진은 이벤트를 발행하지 않고 테스트도 그대로입니다.
+- **UI 폴리시** — 스테이지별 코드네임 인트로 배너, 80% 목표 눈금이 있는 점유
+  진행 바, 점수 팝 애니메이션, 마지막 목숨 경고 펄스, 기록/클리어/승리 시 CSS
+  콘페티, 애니메이션 타이틀 그리드, 창 포커스를 잃으면 자동 일시정지.
 
-- **Synth audio** (`src/ui/fx/audio.ts`) — WebAudio oscillator SFX for claims,
-  items, lasers, deaths, sparks, stage clears and boss kills, plus a low ambient
-  pad during play. `M` mutes, preference persists.
-- **Canvas effects** (`src/ui/fx/fx.ts`) — particle bursts, floating `+score`
-  popups, full-field flashes, screen shake and a danger vignette that pulses
-  while you're drawing (and turns rose when a spark is hunting your trail).
-- **State watcher** (`src/ui/fx/watcher.ts`) — derives all of the above by
-  diffing engine state per frame; the engine publishes no events and its tests
-  stay untouched.
-- **UI polish** — stage-intro banners with per-stage codenames, claim progress
-  bar with an 80% target tick, score pop animation, last-life warning pulse,
-  CSS confetti on records/clears/victory, animated title grid, auto-pause when
-  the window loses focus.
+앱 아이콘(`build/icon.*`)도 게임의 비주얼 언어로 프로그램이 그립니다 — `npm run icon`으로 재생성.
 
-The app icon (`build/icon.*`) is drawn programmatically in the game's visual
-language — regenerate with `npm run icon`.
+## 조작법
 
-## Controls
-
-| Key | Action |
+| 키 | 동작 |
 |---|---|
-| **Arrow keys** | Move along the claimed frontier (shield mode) |
-| **Space (hold)** | Cut a trail into unclaimed space (drawing mode) |
-| **X** | Fire a laser (shield mode, needs the `L` item) |
-| **P** | Pause / resume |
-| **M** | Toggle sound (persisted) |
-| **Enter** | Start · advance after a stage clear · restart |
+| **방향키** | 점유 경계선을 따라 이동 (실드 모드) |
+| **Space (누르고 있기)** | 미점유 공간으로 트레일 긋기 (드로잉 모드) |
+| **X** | 레이저 발사 (실드 모드, `L` 아이템 필요) |
+| **P** | 일시정지 / 재개 |
+| **M** | 사운드 토글 (저장됨) |
+| **Enter** | 시작 · 스테이지 클리어 후 진행 · 재시작 |
 
-## How it plays
+## 게임 규칙
 
-- You start **shielded**, walking only on boundary cells (claimed/border cells that touch the dark). Shielded, nothing can kill you.
-- Hold **Space** and step into the dark to start **drawing** a trail. Close the loop back onto claimed ground and the enclosed region is captured.
-- Capture works by flood-filling from the **boss**: whichever side the boss is *not* trapped in stays dark, everything else becomes yours. Minions caught inside die for a trap bonus.
-- While drawing you are vulnerable — enemy contact, or a **spark** crawling up your trail, costs a life.
-- Pick up items by enclosing their tiles: **T** freeze, **S** speed, **L** laser charges, **P** points, **C** clear minions.
-- **The Core fights back** — every **5th stage** (5, 10, … 30) is a boss battle: the boss fires aimed
-  projectiles on a cooldown and *enrages as you claim* (past 40% it fires faster, past 65% it spits a
-  3-shot fan). Projectiles splash harmlessly against your claimed ground (territory is cover) and only
-  threaten you while drawing. On other stages the boss just wanders. Difficulty rises every stage.
-- **Beat the clock.** Every life on a stage runs on a **60-second timer**. As it drains the enemies pile on speed — **+25% under 20 s**, **+50% under 10 s** — and the HUD `TIME` gauge shifts cyan → amber → red to warn you. Letting it hit zero costs a life (and rolls back the trail you were mid-draw on); the clock refills on the fresh life.
-- Reach **80%** to clear the stage. Kill the boss with the laser to annex the whole field instantly for a big bonus.
+- 처음에는 **실드 상태**로 경계 셀(어둠과 맞닿은 점유/보더 셀) 위만 걷습니다. 실드 상태에서는 무적입니다.
+- **Space**를 누른 채 어둠으로 들어가면 **트레일**을 긋기 시작합니다. 점유 지역으로 되돌아와 고리를 닫으면 둘러싼 영역이 점유됩니다.
+- 점유는 **보스 기준 플러드필**로 판정합니다: 보스가 갇히지 *않은* 쪽은 어둠으로 남고 나머지가 전부 당신 것이 됩니다. 안에 갇힌 미니언은 함정 보너스와 함께 소멸합니다.
+- 그리는 동안은 무방비 상태 — 적과 닿거나 **스파크**가 트레일을 타고 올라오면 목숨을 잃습니다.
+- 아이템 타일을 영역 안에 가두면 획득: **T** 시간정지, **S** 속도, **L** 레이저 충전, **P** 점수, **C** 미니언 일소.
+- **시계와 싸우세요.** 스테이지의 목숨 하나마다 **60초 타이머**가 돕니다. 시간이 줄수록 적이 빨라지고 — **20초 이하 +25%, 10초 이하 +50%** — HUD의 `TIME` 게이지가 시안 → 앰버 → 레드로 경고합니다. 0이 되면 목숨을 하나 잃고(그리던 트레일은 롤백) 새 목숨과 함께 시계가 리필됩니다.
+- **코어는 반격합니다** — **5스테이지마다**(5, 10, …) 보스전: 보스가 쿨다운마다 조준 탄을 쏘고 *점유율이 오를수록 분노합니다*(40% 초과 시 연사, 65% 초과 시 3발 부채꼴). 탄은 점유 지역에 닿으면 무해하게 소멸하고(영토가 엄폐물) 그리는 중에만 위협적입니다. 다른 스테이지에서 보스는 배회만 합니다. 난이도는 스테이지마다 상승합니다.
+- **80%**를 점유하면 클리어. 레이저로 보스를 잡으면 필드 전체를 즉시 합병하고 큰 보너스를 받습니다.
 
-## Architecture
+## 아키텍처
 
-The engine is a **pure TypeScript module with zero React/DOM dependencies**, so it runs headless under Vitest. React only subscribes to an immutable HUD snapshot; it never holds per-frame game state.
+엔진은 **React/DOM 의존성이 전혀 없는 순수 TypeScript 모듈**이라 Vitest에서 헤드리스로 돌아갑니다. React는 불변 HUD 스냅샷만 구독하며, 프레임 단위 게임 상태를 들고 있지 않습니다.
 
 ```
                        ┌─────────────────────────────────────────┐
                        │            engine (pure TS)              │
                        │                                          │
   InputState  ───────▶ │  tick(input, dt)                         │
-  (held keys)          │    movement → claim → laser              │
+  (누른 키)             │    movement → claim → laser              │
                        │    → enemies → spark → collision → death │
                        │                                          │
   EngineAction ──────▶ │  dispatch(action)   (Enter/P/X)          │
@@ -119,32 +108,32 @@ The engine is a **pure TypeScript module with zero React/DOM dependencies**, so 
                        │  GameState  (grid Uint8Array, player,    │
                        │   boss, minions, sparks, lasers, items)  │
                        │                                          │
-                       │  subscribe / getSnapshot  ◀── publishes  │
-                       │       only when a HUD value changes      │
+                       │  subscribe / getSnapshot  ◀── HUD 값이   │
+                       │       바뀔 때만 발행                      │
                        └───────┬───────────────────────┬──────────┘
                                │ getState()            │ getSnapshot()
-                               ▼ (live, for render)    ▼ (useSyncExternalStore)
+                               ▼ (라이브, 렌더용)        ▼ (useSyncExternalStore)
                     ┌──────────────────────┐   ┌────────────────────────┐
-                    │  renderer (Canvas 2D)│   │  React HUD / screens   │
-                    │  static layer:       │   │  Hud, Title, Pause,    │
-                    │   redrawn ONLY on a  │   │  StageClear, GameOver  │
-                    │   trail commit       │   │  (re-render on value   │
-                    │  dynamic layer:      │   │   change, not frame)   │
-                    │   drawn every frame  │   └────────────────────────┘
+                    │  renderer (Canvas 2D)│   │  React HUD / 화면들     │
+                    │  정적 레이어:          │   │  Hud, Title, Pause,    │
+                    │   트레일 커밋 시에만    │   │  StageClear, GameOver  │
+                    │   다시 그림            │   │  (값이 바뀔 때만        │
+                    │  동적 레이어:          │   │   리렌더, 프레임 아님)   │
+                    │   매 프레임 그림        │   └────────────────────────┘
                     └──────────────────────┘
                                ▲
-                    requestAnimationFrame + 60Hz fixed-timestep
-                    accumulator (dt clamped to avoid tunneling)
+                    requestAnimationFrame + 60Hz 고정 타임스텝
+                    누산기 (dt 클램프로 터널링 방지)
 ```
 
-### Directory layout
+### 디렉토리 구조
 
 ```
 src/
   engine/
     core/      types.ts · grid.ts · gameState.ts · rng.ts
     systems/   movement.ts · claim.ts · enemies.ts · spark.ts
-               items.ts · laser.ts · collision.ts · scoring.ts
+               items.ts · laser.ts · collision.ts · scoring.ts · bossAttack.ts
     config/    constants.ts · stages.ts
     index.ts   createEngine(): { tick, dispatch, subscribe, getSnapshot, getState }
   ui/
@@ -152,31 +141,33 @@ src/
                 StageClearScreen · GameOverScreen · VictoryScreen
     hooks/      useGameEngine · useKeyboard · useRafLoop
     render/     renderer.ts · perf.ts
+    fx/         audio.ts · fx.ts · watcher.ts
   App.tsx · main.tsx
-tests/engine/  unit tests (headless, DOM-free)
+electron/       main.ts · preload.ts (보안-강화 셸)
+tests/          엔진 + electron 단위 테스트 (헤드리스, DOM 없음)
 ```
 
-### Design rules enforced here
+### 지켜지는 설계 규칙
 
-- **Engine owns the state, outside React.** `useSyncExternalStore` reads a HUD snapshot that the engine republishes *only when a value changes*, so HUD components don't re-render per frame.
-- **Fixed timestep.** `requestAnimationFrame` drives a 60Hz accumulator; the frame delta is clamped (`MAX_FRAME_DT`) so returning from a hidden tab can't flood the loop and tunnel entities through walls. No `setInterval`.
-- **Two-layer rendering.** The grid (claimed/unclaimed/border) is rasterized into an offscreen canvas and redrawn **only on a trail commit** (tracked by `gridVersion`); every frame blits that layer once and draws moving entities on top.
-- **O(1) collisions.** All hit tests are cell-indexed or per-enemy distance checks — no O(n²) entity scans.
-- **SOLID.** Each `systems/*` file has one responsibility; the engine core never imports the renderer. Enemy behavior is a per-kind table, so a new enemy type is one state variant plus one entry (OCP).
-- **`strict: true`, no `any`, no magic numbers** — all tuning lives in `engine/config/constants.ts`; per-stage difficulty in `stages.ts`.
+- **상태는 엔진이 소유하고 React 밖에 둡니다.** `useSyncExternalStore`는 엔진이 *값이 바뀔 때만* 재발행하는 HUD 스냅샷을 읽으므로 HUD 컴포넌트가 프레임마다 리렌더되지 않습니다.
+- **고정 타임스텝.** `requestAnimationFrame`이 60Hz 누산기를 구동하고 프레임 델타는 클램프(`MAX_FRAME_DT`)되어, 숨겨졌던 탭에서 돌아와도 엔티티가 벽을 뚫지 못합니다. `setInterval`은 쓰지 않습니다.
+- **2-레이어 렌더링.** 그리드(점유/미점유/보더)는 오프스크린 캔버스에 래스터화해 **트레일 커밋 시에만** 다시 그리고(`gridVersion`으로 추적), 매 프레임은 그 레이어를 한 번 블릿한 뒤 움직이는 엔티티만 위에 그립니다.
+- **O(1) 충돌.** 모든 히트 판정은 셀 인덱스 기반이거나 적 하나당 거리 검사입니다 — O(n²) 엔티티 스캔이 없습니다.
+- **SOLID.** `systems/*` 파일은 각각 하나의 책임만 갖고, 엔진 코어는 렌더러를 임포트하지 않습니다. 적 행동은 종류별 테이블이라 새 적 타입은 상태 변형 하나 + 엔트리 하나면 됩니다(OCP).
+- **`strict: true`, `any` 금지, 매직 넘버 금지** — 모든 튜닝 값은 `engine/config/constants.ts`, 스테이지별 난이도는 `stages.ts`에 있습니다.
 
-### The claim algorithm (`systems/claim.ts`)
+### 점유 알고리즘 (`systems/claim.ts`)
 
-On commit: trail → claimed; flood-fill unclaimed cells from the boss's cell; every unclaimed cell the fill *couldn't* reach becomes claimed. Slivers (1-cell gaps left by parallel trails) fall out of the flood fill automatically — no special-case code. If the boss is already dead there's no seed, so the whole field is claimed and the stage clears.
+커밋 시: 트레일 → 점유로 전환; 보스가 있는 셀에서 미점유 셀들을 플러드필; 필이 *닿지 못한* 미점유 셀을 전부 점유로 바꿉니다. 슬리버(평행 트레일이 남긴 1셀 틈)는 플러드필에서 자연히 걸러지므로 특수 처리 코드가 없습니다. 보스가 이미 죽었으면 시드가 없으니 필드 전체가 점유되고 스테이지가 클리어됩니다.
 
-## Performance
+## 성능
 
-- Target is a steady **60 fps**. In `npm run dev` a corner overlay shows live FPS and the running **static-layer redraw count** — the redraw count should track the number of trail commits, never the frame count, proving the two-layer cache works. The renderer also logs each static redraw to the console in dev.
-- The fixed-timestep loop decouples simulation from frame rate, so physics stays stable even if rendering dips.
+- 목표는 안정적인 **60 fps**. `npm run dev`에서는 구석 오버레이가 실시간 FPS와 누적 **정적 레이어 다시 그리기 횟수**를 보여줍니다 — 이 횟수는 프레임 수가 아니라 트레일 커밋 수를 따라가야 하며, 그것이 2-레이어 캐시가 동작한다는 증거입니다.
+- 고정 타임스텝 루프가 시뮬레이션과 프레임률을 분리하므로 렌더링이 잠시 처져도 물리는 안정적입니다.
 
-## Testing
+## 테스트
 
-116 headless engine tests cover the spec-critical paths: the flood-fill claim (boss on each side, 1-cell slivers, boss-dead full claim, over-80% bonus), trail rules (self-cross/backtrack blocks, commit conversion), enemy movement and containment, collisions and death rollback (ratio invariant), spark pathing, laser hits and boss-kill clear, item once-only acquisition, the boss-battle projectiles/rage, the **stage clock** (drains while playing, pauses when paused, times out into a life loss that refills the clock) and its **enemy speed-up ramp** at the 20 s / 10 s thresholds, and the engine lifecycle (title/pause/stage-carry/victory + snapshot-only-on-change).
+116개의 헤드리스 엔진 테스트가 스펙의 핵심 경로를 커버합니다: 플러드필 점유(보스 양쪽 케이스, 1셀 슬리버, 보스 사망 시 전체 점유, 80% 초과 보너스), 트레일 규칙(자가 교차/역주행 차단, 커밋 전환), 적 이동과 가둠, 충돌과 사망 롤백(점유율 불변), 스파크 경로 추적, 레이저 히트와 보스 킬 클리어, 아이템 1회 획득, 보스전 탄막/분노, **스테이지 시계**(플레이 중 감소, 일시정지 시 정지, 타임아웃 → 목숨 차감 + 시계 리필)와 20초/10초 임계값의 **적 가속 램프**, 엔진 라이프사이클(타이틀/일시정지/스테이지 승계/승리 + 값 변경 시에만 스냅샷 발행).
 
 ```bash
 npm test
