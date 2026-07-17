@@ -93,6 +93,13 @@ export function createEngine(options: StateOptions = {}): Engine {
       state.player.slowedFor = Math.max(0, state.player.slowedFor - dt);
       state.player.stunnedFor = Math.max(0, state.player.stunnedFor - dt);
       state.player.hazardGraceFor = Math.max(0, state.player.hazardGraceFor - dt);
+      // Chain-lightning bookkeeping runs in real time (not enemy-scaled dt).
+      for (const m of state.minions) {
+        if (m.frozenFor > 0) m.frozenFor = Math.max(0, m.frozenFor - dt);
+      }
+      if (state.lightningArcs.length > 0) {
+        state.lightningArcs = state.lightningArcs.filter((a) => (a.ttl -= dt) > 0);
+      }
       updatePlayer(state, input, dt); // may commit a trail and clear the stage
       if (state.status === 'playing') {
         updateLasers(state, dt); // may kill the boss and clear the stage

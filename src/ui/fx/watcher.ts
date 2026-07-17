@@ -49,6 +49,9 @@ export function createWatcher(): Watcher {
   let ghostTimer = 0;
   let cutSparkTimer = 0;
   let lastTrailCells: GameState['trail']['cells'] = [];
+  // Elemental-hazard transitions (slow/stun rising edges; burn via score diff).
+  let prevSlowedFor = 0;
+  let prevStunnedFor = 0;
   // Boss battle: hp/rage transitions + projectile lifecycle (id → last pos).
   let prevBossHp = -1;
   let prevRage = 0;
@@ -61,6 +64,8 @@ export function createWatcher(): Watcher {
   return {
     scan(state, fx, audio, dt): void {
       const { status } = state;
+      // The music loop follows the stage's elemental theme (cheap setter).
+      audio.setTheme(state.stage.theme);
 
       if (!initialized || state.items !== prevItems) {
         // First frame, or a new stage swapped the entity arrays: resync silently.
@@ -120,7 +125,13 @@ export function createWatcher(): Watcher {
         }
 
         // --- territory claimed (grid committed) --------------------------------
-        if (state.gridVersion !== prevGridVersion && state.lives >= prevLives) {
+        // Every commit scores at least its trail cells, so a version bump with
+        // NO score change is a fire-hazard burn (rollback), not a claim.
+        if (
+          state.gridVersion !== prevGridVersion &&
+          state.lives >= prevLives &&
+          state.score > prevScore
+        ) {
           const delta = state.score - prevScore;
           const [x, y] = px(state.player.pos.x + 0.5, state.player.pos.y + 0.5);
           const big = delta >= 3000;
@@ -132,11 +143,49 @@ export function createWatcher(): Watcher {
             fx.sparks((c.x + 0.5) * CELL_PX, (c.y + 0.5) * CELL_PX, CYAN, 2, 60);
           }
           lastTrailCells = []; // consumed — a later claim ignites its own path only
-          if (delta > 0) {
-            fx.popup(x, Math.max(12, y - 8), `+${delta.toLocaleString('en-US')}`, big ? GOLD : CYAN);
-          }
+          fx.popup(x, Math.max(12, y - 8), `+${delta.toLocaleString('en-US')}`, big ? GOLD : CYAN);
           if (big) fx.flash('#164e63', 0.14);
           audio.play(big ? 'bigClaim' : 'claim');
+        }
+
+        // --- fire hazard: the cut burned away (rollback without death/score) ----
+        if (
+          state.gridVersion !== prevGridVersion &&
+          state.lives >= prevLives &&
+          state.score === prevScore &&
+          lastTrailCells.length > 0
+        ) {
+          const [x, y] = px(state.player.pos.x + 0.5, state.player.pos.y + 0.5);
+          // Flames race down the lost path.
+          const step = Math.max(1, Math.floor(lastTrailCells.length / 50));
+          for (let i = 0; i < lastTrailCells.length; i += step) {
+            const c = lastTrailCells[i]!;
+            fx.sparks((c.x + 0.5) * CELL_PX, (c.y + 0.5) * CELL_PX, '#fb923c', 3, 90);
+          }
+          lastTrailCells = [];
+          fx.burst(x, y, '#f97316', 22, 130);
+          fx.popup(x, Math.max(12, y - 10), 'BURNED!', '#fb923c');
+          fx.flash('#431407', 0.18);
+          fx.shake(5, 0.3);
+          audio.play('hazardBurn');
+        }
+
+        // --- ice / lightning hazard hits (rising edges) -------------------------
+        if (state.player.slowedFor > prevSlowedFor) {
+          const [x, y] = px(state.player.pos.x + 0.5, state.player.pos.y + 0.5);
+          fx.burst(x, y, '#38bdf8', 14, 90);
+          fx.popup(x, Math.max(12, y - 10), 'FROSTED', '#7dd3fc');
+          fx.flash('#082f49', 0.14);
+          audio.play('hazardSlow');
+        }
+        if (state.player.stunnedFor > prevStunnedFor) {
+          const [x, y] = px(state.player.pos.x + 0.5, state.player.pos.y + 0.5);
+          fx.burst(x, y, GOLD, 20, 150);
+          fx.burst(x, y, WHITE, 8, 220);
+          fx.popup(x, Math.max(12, y - 10), 'SHOCKED', GOLD);
+          fx.flash('#422006', 0.16);
+          fx.shake(6, 0.3);
+          audio.play('hazardStun');
         }
 
         // --- item pickups -------------------------------------------------------
@@ -247,6 +296,8 @@ export function createWatcher(): Watcher {
       prevStatus = status;
       prevScore = state.score;
       prevLives = state.lives;
+      prevSlowedFor = state.player.slowedFor;
+      prevStunnedFor = state.player.stunnedFor;
       prevGridVersion = state.gridVersion;
       prevLaserAmmo = state.laserAmmo;
       prevSparkCount = state.sparks.length;

@@ -80,6 +80,7 @@ describe('collision rules (spec 2.4)', () => {
       dir: 'left',
       turn: 1,
       stepCooldown: 0,
+      frozenFor: 0,
     });
 
     updatePlayerCollisions(state);
@@ -97,6 +98,7 @@ describe('collision rules (spec 2.4)', () => {
       dir: 'left',
       turn: 1,
       stepCooldown: 0,
+      frozenFor: 0,
     });
 
     updatePlayerCollisions(state);

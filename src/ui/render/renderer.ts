@@ -332,9 +332,14 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
         const cx = lerp(pv.x, m.pos.x, alpha) * CELL_PX;
         const cy = lerp(pv.y, m.pos.y, alpha) * CELL_PX;
         const r = WANDERER_RADIUS * CELL_PX;
-        ctx.shadowColor = COLORS.wanderer;
+        // Chain-frozen minions flicker pale yellow instead of rose.
+        const frozen = m.frozenFor > 0;
+        const color = frozen
+          ? (Math.floor(timeMs / 90) % 2 === 0 ? '#fef08a' : '#fde047')
+          : COLORS.wanderer;
+        ctx.shadowColor = color;
         ctx.shadowBlur = 8;
-        ctx.fillStyle = COLORS.wanderer;
+        ctx.fillStyle = color;
         ctx.beginPath();
         ctx.moveTo(cx, cy - r);
         ctx.lineTo(cx + r, cy);
@@ -356,17 +361,24 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
         if (Math.abs(track.cur.x - track.prev.x) + Math.abs(track.cur.y - track.prev.y) > SNAP_DIST) {
           track.prev = { ...track.cur }; // rejoined the frontier after a claim
         }
-        // frozen -> crawlerElapsed is 0, so t holds still mid-glide.
-        const t = stepProgress(m.stepCooldown - crawlerElapsed, 1 / EDGE_CRAWLER_SPEED);
+        // frozen (time stop or chain lightning) -> no elapsed, t holds mid-glide.
+        const chainFrozen = m.frozenFor > 0;
+        const t = stepProgress(
+          m.stepCooldown - (chainFrozen ? 0 : crawlerElapsed),
+          1 / EDGE_CRAWLER_SPEED,
+        );
         const rx = lerp(track.prev.x, track.cur.x, t);
         const ry = lerp(track.prev.y, track.cur.y, t);
-        const pulse = 1 + 0.15 * Math.sin(timeMs / 120);
+        const pulse = chainFrozen ? 1 : 1 + 0.15 * Math.sin(timeMs / 120);
         const s = CELL_PX * 1.4 * pulse;
         const cx = (rx + 0.5) * CELL_PX;
         const cy = (ry + 0.5) * CELL_PX;
-        ctx.shadowColor = COLORS.crawler;
+        const color = chainFrozen
+          ? (Math.floor(timeMs / 90) % 2 === 0 ? '#fef08a' : '#fde047')
+          : COLORS.crawler;
+        ctx.shadowColor = color;
         ctx.shadowBlur = 8;
-        ctx.fillStyle = COLORS.crawler;
+        ctx.fillStyle = color;
         ctx.fillRect(cx - s / 2, cy - s / 2, s, s);
         ctx.shadowBlur = 0;
       }
@@ -400,6 +412,36 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
       ctx.fill();
       ctx.shadowBlur = 0;
     });
+  }
+
+  /** Chain-lightning arcs: jagged bolts fading out over their ttl. */
+  function drawLightningArcs(state: GameState, timeMs: number): void {
+    for (const arc of state.lightningArcs) {
+      const a = Math.max(0, Math.min(1, arc.ttl / 0.45));
+      const x1 = arc.from.x * CELL_PX;
+      const y1 = arc.from.y * CELL_PX;
+      const x2 = arc.to.x * CELL_PX;
+      const y2 = arc.to.y * CELL_PX;
+      const segs = 6;
+      const nx = -(y2 - y1);
+      const ny = x2 - x1;
+      const nl = Math.hypot(nx, ny) || 1;
+      ctx.strokeStyle = `rgba(250,204,21,${(0.85 * a).toFixed(3)})`;
+      ctx.shadowColor = '#fde047';
+      ctx.shadowBlur = 10;
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      for (let i = 1; i < segs; i++) {
+        const t = i / segs;
+        // Deterministic per-frame jitter: bolts writhe as timeMs advances.
+        const wob = Math.sin(timeMs / 22 + i * 2.7 + arc.ttl * 31) * CELL_PX * 1.1;
+        ctx.lineTo(x1 + (x2 - x1) * t + (nx / nl) * wob, y1 + (y2 - y1) * t + (ny / nl) * wob);
+      }
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
   }
 
   function drawLasers(state: GameState, alpha: number): void {
@@ -578,6 +620,7 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
       drawBoss(state, timeMs, alpha);
       drawProjectiles(state, alpha);
       drawLasers(state, alpha);
+      drawLightningArcs(state, timeMs);
       drawPlayer(state, timeMs, alpha);
     },
     getStaticRedrawCount: () => staticRedraws,

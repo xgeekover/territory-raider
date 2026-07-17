@@ -107,6 +107,8 @@ export interface WandererState {
   pos: Vec2;
   vel: Vec2;
   sparkCooldown: number;
+  /** Lightning chain: seconds this minion stays frozen in place. */
+  frozenFor: number;
 }
 
 export interface EdgeCrawlerState {
@@ -119,6 +121,15 @@ export interface EdgeCrawlerState {
   /** 1 = clockwise wall-following, -1 = counter-clockwise. */
   turn: 1 | -1;
   stepCooldown: number;
+  /** Lightning chain: seconds this minion stays frozen in place. */
+  frozenFor: number;
+}
+
+/** A visible chain-lightning arc (cell coordinates), fading over ttl seconds. */
+export interface LightningArc {
+  from: Vec2;
+  to: Vec2;
+  ttl: number;
 }
 
 export type MinionState = WandererState | EdgeCrawlerState;

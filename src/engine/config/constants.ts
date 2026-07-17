@@ -65,6 +65,14 @@ export const HAZARD_SLOW_FACTOR = 0.5; // ice: movement speed multiplier
 export const HAZARD_SLOW_DURATION = 3; // seconds
 export const HAZARD_STUN_DURATION = 1; // lightning: frozen solid, seconds
 export const HAZARD_GRACE = 1.5; // seconds of immunity after any trigger
+/**
+ * Lightning chain: the bolt that stuns the player also arcs to nearby
+ * minions and freezes them — a deliberate risk/reward: tap a storm patch to
+ * stop your pursuers at the cost of a shorter self-stun.
+ */
+export const LIGHTNING_CHAIN_RADIUS = 16; // cells, from the trigger cell
+export const LIGHTNING_CHAIN_FREEZE = 2.5; // seconds minions stay frozen
+export const LIGHTNING_ARC_TTL = 0.45; // seconds an arc stays visible
 /** Obstacle/hazard placement: keep clear of the border ring and boss spawn. */
 export const FIELD_FEATURE_MARGIN = 5; // min distance from the border ring
 export const FIELD_FEATURE_CENTER_CLEARANCE = 14; // radius kept free around center

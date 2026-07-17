@@ -51,6 +51,7 @@ describe('laser hits', () => {
       pos: { x: 8.5, y: 6.5 },
       vel: { x: 0, y: 0 },
       sparkCooldown: 0,
+      frozenFor: 0,
     });
     fireLaser(state);
     updateLasers(state, 0.2); // 18 cells of travel

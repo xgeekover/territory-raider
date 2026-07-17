@@ -8,6 +8,8 @@
  * nothing touches WebAudio until unlock() is called.
  */
 
+import type { ThemeKind } from '../../engine/core/types';
+
 const MUTE_KEY = 'territory-raider-muted';
 
 export type SfxName =
@@ -24,6 +26,9 @@ export type SfxName =
   | 'bossShoot'
   | 'bossHit'
   | 'bossRage'
+  | 'hazardBurn'
+  | 'hazardSlow'
+  | 'hazardStun'
   | 'confirm'
   | 'pause';
 
@@ -33,10 +38,71 @@ export interface AudioSystem {
   play(name: SfxName): void;
   /** Start/stop the ambient background pad. */
   setMusic(on: boolean): void;
+  /** Elemental theme of the current stage — reshapes the music loop live. */
+  setTheme(theme: ThemeKind | undefined): void;
   /** Returns the new muted state. */
   toggleMuted(): boolean;
   isMuted(): boolean;
 }
+
+/**
+ * Per-theme variation of the chiptune loop: same 4-bar / 16-step machinery,
+ * different key, tempo and timbre. Neutral keeps the original A-minor drive;
+ * fire snarls in D minor on a saw bass; ice drifts slow and glassy through a
+ * C-major wash; lightning races in E minor with an urgent tick.
+ */
+interface MusicTheme {
+  bpm: number;
+  roots: readonly [number, number, number, number];
+  thirds: readonly [number, number, number, number]; // 1.2 = minor, 1.25 = major
+  bassType: OscillatorType;
+  arpType: OscillatorType;
+  arpGain: number;
+  hatMod: 2 | 4; // hat tick every Nth step
+}
+
+const MUSIC_THEMES: Record<'none' | ThemeKind, MusicTheme> = {
+  // Am → F → C → G (the original loop)
+  none: {
+    bpm: 118,
+    roots: [110.0, 87.31, 130.81, 98.0],
+    thirds: [1.2, 1.25, 1.25, 1.25],
+    bassType: 'square',
+    arpType: 'triangle',
+    arpGain: 0.05,
+    hatMod: 2,
+  },
+  // Dm → B♭ → Gm → A: darker, saw-driven, a shade faster
+  fire: {
+    bpm: 126,
+    roots: [73.42, 116.54, 98.0, 110.0],
+    thirds: [1.2, 1.25, 1.2, 1.25],
+    bassType: 'sawtooth',
+    arpType: 'triangle',
+    arpGain: 0.045,
+    hatMod: 2,
+  },
+  // C → G → Am → Em: slow, glassy, sparse percussion
+  ice: {
+    bpm: 102,
+    roots: [130.81, 98.0, 110.0, 82.41],
+    thirds: [1.25, 1.25, 1.2, 1.2],
+    bassType: 'triangle',
+    arpType: 'sine',
+    arpGain: 0.06,
+    hatMod: 4,
+  },
+  // Em → C → D → B: urgent tempo, busy tick
+  lightning: {
+    bpm: 134,
+    roots: [82.41, 130.81, 146.83, 123.47],
+    thirds: [1.2, 1.25, 1.25, 1.25],
+    bassType: 'square',
+    arpType: 'triangle',
+    arpGain: 0.05,
+    hatMod: 2,
+  },
+};
 
 interface ToneSpec {
   type: OscillatorType;
@@ -154,25 +220,36 @@ export function createAudioSystem(): AudioSystem {
       tone({ type: 'sawtooth', from: 220, to: 55, dur: 0.4, at: 0.16, gain: 0.18 });
       noise(0.5, 0.1, 0.1, 700);
     },
+    hazardBurn: () => {
+      // Fire: whoosh + crackle + a falling snarl as the cut goes up in flames.
+      noise(0.3, 0.2, 0, 2400);
+      tone({ type: 'sawtooth', from: 620, to: 85, dur: 0.35, gain: 0.16 });
+      noise(0.14, 0.1, 0.07, 5200);
+    },
+    hazardSlow: () => {
+      // Ice: a crystalline double ping sliding down.
+      tone({ type: 'sine', from: 1250, to: 880, dur: 0.22, gain: 0.11 });
+      tone({ type: 'triangle', from: 1870, to: 1560, dur: 0.14, at: 0.06, gain: 0.08 });
+    },
+    hazardStun: () => {
+      // Lightning: zap crack + thunder body.
+      tone({ type: 'sawtooth', from: 2600, to: 240, dur: 0.12, gain: 0.14 });
+      noise(0.42, 0.24, 0.02, 1100);
+      tone({ type: 'square', from: 170, to: 48, dur: 0.32, at: 0.03, gain: 0.18 });
+    },
     confirm: () => tone({ type: 'square', from: 520, to: 780, dur: 0.07, gain: 0.12 }),
     pause: () => tone({ type: 'triangle', from: 440, to: 330, dur: 0.08, gain: 0.1 }),
   };
 
   // --- background music: a proper chiptune loop -----------------------------
-  // 4-bar sequence in A minor (Am → F → C → G) at 118 BPM, 16th-note grid.
-  // Driving square bass, sparkling arp lead, kick/snare/hat — the classic
-  // arcade territory-capture feel. Scheduled with the standard WebAudio
-  // lookahead pattern so timing stays sample-accurate.
-  const BPM = 118;
-  const STEP_DUR = 60 / BPM / 4; // one 16th note
+  // 4-bar sequence on a 16th-note grid; key/tempo/timbre come from the active
+  // MusicTheme (see MUSIC_THEMES) so each elemental block sounds distinct.
+  // Scheduled with the standard WebAudio lookahead pattern so timing stays
+  // sample-accurate; theme switches take effect from the next queued step.
   const STEPS_PER_BAR = 16;
   const BARS = 4;
+  let musicTheme: 'none' | ThemeKind = 'none';
 
-  // Chord roots per bar (Hz): A2, F2, C3, G2.
-  const ROOTS = [110.0, 87.31, 130.81, 98.0] as const;
-  // Arp chord tones as multiples of the root: root, 3rd(min/maj via table), 5th, octave.
-  // Am: 1, 6/5(C), 3/2(E) · F: 1, 5/4(A), 3/2(C) · C: 1, 5/4(E), 3/2(G) · G: 1, 5/4(B), 3/2(D)
-  const THIRDS = [1.2, 1.25, 1.25, 1.25] as const;
   // 16-step arp contour (indices into [root, third, fifth, octave] two octaves up).
   const ARP_PATTERN = [0, 2, 1, 3, 0, 2, 1, 2, 0, 2, 1, 3, 2, 1, 2, 0] as const;
   // Bass rhythm: driving 8ths with a fifth walk-up at the bar's tail.
@@ -181,10 +258,12 @@ export function createAudioSystem(): AudioSystem {
   function scheduleStep(globalStep: number, t: number): void {
     const ac = ctx;
     if (!ac || !master || muted) return;
+    const theme = MUSIC_THEMES[musicTheme];
+    const STEP_DUR = 60 / theme.bpm / 4;
     const bar = Math.floor(globalStep / STEPS_PER_BAR) % BARS;
     const step = globalStep % STEPS_PER_BAR;
-    const root = ROOTS[bar]!;
-    const third = THIRDS[bar]!;
+    const root = theme.roots[bar]!;
+    const third = theme.thirds[bar]!;
 
     const note = (freq: number, dur: number, type: OscillatorType, gain: number): void => {
       const osc = ac.createOscillator();
@@ -202,13 +281,13 @@ export function createAudioSystem(): AudioSystem {
     // Bass: root 8ths; steps 12/14 walk the fifth/octave for momentum.
     if (BASS_STEPS.has(step)) {
       const f = step === 12 ? root * 1.5 : step === 14 ? root * 2 : root;
-      note(f, STEP_DUR * 1.7, 'square', 0.075);
+      note(f, STEP_DUR * 1.7, theme.bassType, 0.075);
     }
 
     // Arp lead: chord tones two octaves up, quiet and glassy.
     const tones = [4, 4 * third, 6, 8] as const; // ×root — root/3rd/5th/octave
     const idx = ARP_PATTERN[step]!;
-    note(root * tones[idx]!, STEP_DUR * 1.1, 'triangle', 0.05);
+    note(root * tones[idx]!, STEP_DUR * 1.1, theme.arpType, theme.arpGain);
 
     // Drums.
     if (step === 0 || step === 8) {
@@ -240,8 +319,8 @@ export function createAudioSystem(): AudioSystem {
       src.connect(f).connect(g).connect(master);
       src.start(t);
     }
-    if (step % 2 === 0) {
-      // Closed hat: tiny highpassed tick on 8ths, accented off-beat.
+    if (step % theme.hatMod === 0) {
+      // Closed hat: tiny highpassed tick, accented off-beat (sparser on ice).
       const len = Math.floor(ac.sampleRate * 0.025);
       const buf = ac.createBuffer(1, len, ac.sampleRate);
       const d = buf.getChannelData(0);
@@ -265,10 +344,11 @@ export function createAudioSystem(): AudioSystem {
     let nextTime = ac.currentTime + 0.06;
     const timer = window.setInterval(() => {
       // Lookahead scheduling: queue every step falling inside the next 120ms.
+      // The step duration is read per step so a theme switch retimes the loop.
       while (nextTime < ac.currentTime + 0.12) {
         scheduleStep(step, nextTime);
         step = (step + 1) % (STEPS_PER_BAR * BARS);
-        nextTime += STEP_DUR;
+        nextTime += 60 / MUSIC_THEMES[musicTheme].bpm / 4;
       }
     }, 30);
     musicNodes = { stop: () => window.clearInterval(timer) };
@@ -302,6 +382,9 @@ export function createAudioSystem(): AudioSystem {
       musicWanted = on;
       if (on && !muted) startMusic();
       else stopMusic();
+    },
+    setTheme(theme: ThemeKind | undefined): void {
+      musicTheme = theme ?? 'none';
     },
     toggleMuted(): boolean {
       muted = !muted;

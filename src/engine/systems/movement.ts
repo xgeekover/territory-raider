@@ -7,6 +7,9 @@ import {
   HAZARD_SLOW_DURATION,
   HAZARD_SLOW_FACTOR,
   HAZARD_STUN_DURATION,
+  LIGHTNING_ARC_TTL,
+  LIGHTNING_CHAIN_FREEZE,
+  LIGHTNING_CHAIN_RADIUS,
   PLAYER_SPEED,
 } from '../config/constants';
 import { commitTrail, rollbackTrail } from './claim';
@@ -34,9 +37,23 @@ export function updatePlayer(state: GameState, input: InputState, dt: number): v
   // block can't bank many steps and lurch the player on reopen (max 2 steps).
   p.moveCooldown = Math.max(-period, p.moveCooldown - dt);
   while (p.moveCooldown <= 0 && state.status === 'playing') {
-    if (!tryStep(state, input)) break;
+    if (!tryStep(state, slidingInput(state, input))) break;
     p.moveCooldown += period;
   }
+}
+
+/**
+ * Ice-floor sliding (ice theme): while the drawing player stands on a frost
+ * patch, momentum drags the cut onward in the facing direction — even with no
+ * keys held — and the action key is forced so the slide keeps cutting. Held
+ * directions still act as fallback steering, so a slide blocked by a rock or
+ * the trail can be escaped and no soft-lock is possible.
+ */
+function slidingInput(state: GameState, input: InputState): InputState {
+  const p = state.player;
+  if (state.stage.theme !== 'ice' || p.mode !== 'drawing') return input;
+  if (!state.hazards.has(cellIndex(state.grid, p.pos.x, p.pos.y))) return input;
+  return { dirs: [p.facing, ...input.dirs.filter((d) => d !== p.facing)], action: true };
 }
 
 /** Attempt one step using held directions, most recent first. Returns true if the player moved. */
@@ -119,7 +136,33 @@ function triggerHazard(state: GameState): void {
   if (p.hazardGraceFor > 0) return;
   p.hazardGraceFor = HAZARD_GRACE;
   if (theme === 'ice') p.slowedFor = HAZARD_SLOW_DURATION;
-  else p.stunnedFor = HAZARD_STUN_DURATION;
+  else {
+    p.stunnedFor = HAZARD_STUN_DURATION;
+    chainLightning(state);
+  }
+}
+
+/**
+ * Chain lightning: the bolt that stuns the player arcs to every live minion
+ * within LIGHTNING_CHAIN_RADIUS and freezes it for longer than the player's
+ * own stun — deliberately tapping a storm patch is a legitimate defensive
+ * play. The boss is too massive to chain.
+ */
+function chainLightning(state: GameState): void {
+  const px = state.player.pos.x + 0.5;
+  const py = state.player.pos.y + 0.5;
+  for (const m of state.minions) {
+    if (!m.alive) continue;
+    const mx = m.kind === 'wanderer' ? m.pos.x : m.cell.x + 0.5;
+    const my = m.kind === 'wanderer' ? m.pos.y : m.cell.y + 0.5;
+    if (Math.hypot(mx - px, my - py) > LIGHTNING_CHAIN_RADIUS) continue;
+    m.frozenFor = LIGHTNING_CHAIN_FREEZE;
+    state.lightningArcs.push({
+      from: { x: px, y: py },
+      to: { x: mx, y: my },
+      ttl: LIGHTNING_ARC_TTL,
+    });
+  }
 }
 
 function pushTrailCell(state: GameState, cell: Vec2): void {

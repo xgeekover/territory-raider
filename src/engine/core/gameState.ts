@@ -6,6 +6,7 @@ import type {
   ItemCode,
   ItemTile,
   LaserShot,
+  LightningArc,
   MinionState,
   PlayerState,
   SparkState,
@@ -53,6 +54,8 @@ export interface GameState {
    * drawing player triggers them). Claiming over a hazard cleanses it.
    */
   hazards: Set<number>;
+  /** Chain-lightning arcs currently visible (lightning theme), fading by ttl. */
+  lightningArcs: LightningArc[];
   score: number;
   lives: number;
   claimRatio: number;
@@ -213,6 +216,7 @@ function spawnMinions(stage: StageConfig, grid: Grid, rng: Rng): MinionState[] {
       pos,
       vel: { x: Math.cos(angle) * WANDERER_SPEED, y: Math.sin(angle) * WANDERER_SPEED },
       sparkCooldown: 0,
+      frozenFor: 0,
     });
   }
   // Crawlers start on the border ring, spread along the bottom/side edges
@@ -228,6 +232,7 @@ function spawnMinions(stage: StageConfig, grid: Grid, rng: Rng): MinionState[] {
       dir: i % 2 === 0 ? 'left' : 'right',
       turn: i % 2 === 0 ? 1 : -1,
       stepCooldown: 0,
+      frozenFor: 0,
     });
   }
   return minions;
@@ -311,6 +316,7 @@ export function createStageState(
     projectiles: [],
     items: placeItems(stage.itemTiles, grid, rng, hazards),
     hazards,
+    lightningArcs: [],
     score: carry?.score ?? 0,
     lives: carry?.lives ?? START_LIVES,
     claimRatio: 0,

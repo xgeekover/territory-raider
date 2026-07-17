@@ -5,7 +5,7 @@ import { cellIndex, claimRatio } from '../../src/engine/core/grid';
 import { createStageState } from '../../src/engine/core/gameState';
 import { createEngine } from '../../src/engine';
 import { playerStepPeriod, tryStep, updatePlayer } from '../../src/engine/systems/movement';
-import { bounceMove } from '../../src/engine/systems/enemies';
+import { bounceMove, updateEnemies } from '../../src/engine/systems/enemies';
 import { updateBossAttack } from '../../src/engine/systems/bossAttack';
 import { getStage, themeOf } from '../../src/engine/config/stages';
 import {
@@ -226,6 +226,82 @@ describe('elemental hazards', () => {
 
     expect(cellAt(state, 2, 2)).toBe(CellState.Claimed);
     expect(state.hazards.has(hazardIdx)).toBe(false);
+  });
+
+  it('ice floor slides the cut onward in the facing direction', () => {
+    const state = makeTestState({ stages: [{ ...TEST_STAGE, theme: 'ice', hazardPatches: 0 }] });
+    state.player.pos = { x: 8, y: 0 };
+    tryStep(state, input(['down'], true)); // drawing at (8,1), facing down
+    // frost strip across (8,2)..(8,4)
+    for (const y of [2, 3, 4]) state.hazards.add(cellIndex(state.grid, 8, y));
+    tryStep(state, input(['down'], true)); // step onto the ice at (8,2)
+
+    // holding RIGHT — but the slide keeps carrying the cut DOWN across the ice
+    for (let i = 0; i < 30; i++) updatePlayer(state, input(['right'], true), 1 / 60);
+    expect(state.player.pos.y).toBeGreaterThanOrEqual(5); // carried past the strip
+    // the first post-ice step finally honors the held key
+    expect(state.trail.cells.some((c) => c.x === 8 && c.y === 4)).toBe(true); // slid straight
+  });
+
+  it('a blocked slide can be steered off the ice (no soft-lock)', () => {
+    const state = makeTestState({ stages: [{ ...TEST_STAGE, theme: 'ice', hazardPatches: 0 }] });
+    state.player.pos = { x: 8, y: 0 };
+    tryStep(state, input(['down'], true)); // drawing at (8,1), facing down
+    state.hazards.add(cellIndex(state.grid, 8, 2));
+    state.grid.cells[cellIndex(state.grid, 8, 3)] = CellState.Obstacle; // wall below
+    tryStep(state, input(['down'], true)); // onto the ice, slide is blocked
+
+    for (let i = 0; i < 10; i++) updatePlayer(state, input(['right'], true), 1 / 60);
+    expect(state.player.pos.x).toBeGreaterThan(8); // held key steered off the ice
+  });
+
+  it('lightning chains to nearby minions and freezes them in place', () => {
+    // a grid big enough that "outside the chain radius" exists
+    const state = makeTestState({
+      width: 40,
+      height: 30,
+      stages: [{ ...TEST_STAGE, theme: 'lightning', hazardPatches: 0 }],
+    });
+    state.player.pos = { x: 8, y: 0 };
+    tryStep(state, input(['down'], true)); // drawing at (8,1)
+    state.hazards.add(cellIndex(state.grid, 8, 2));
+    state.minions.push(
+      { kind: 'wanderer', id: 901, alive: true, pos: { x: 10, y: 4 }, vel: { x: 8, y: 0 }, sparkCooldown: 0, frozenFor: 0 },
+      { kind: 'wanderer', id: 902, alive: true, pos: { x: 35, y: 25 }, vel: { x: 8, y: 0 }, sparkCooldown: 0, frozenFor: 0 },
+    );
+    tryStep(state, input(['down'], true)); // storm cell → stun + chain
+
+    const wanderer = (id: number) =>
+      state.minions.find(
+        (m): m is Extract<(typeof state.minions)[number], { kind: 'wanderer' }> =>
+          m.kind === 'wanderer' && m.id === id,
+      )!;
+    const near = wanderer(901);
+    const far = wanderer(902);
+    expect(near.frozenFor).toBeGreaterThan(0);
+    expect(far.frozenFor).toBe(0); // out of chain radius
+    expect(state.lightningArcs.length).toBeGreaterThan(0); // visible bolt
+
+    // frozen minions don't move; unfrozen ones do
+    const nearBefore = { ...near.pos };
+    const farBefore = { ...far.pos };
+    updateEnemies(state, 0.2);
+    expect(near.pos).toEqual(nearBefore);
+    expect(far.pos.x).not.toBe(farBefore.x);
+  });
+
+  it('arc ttl and minion freeze tick down through the engine loop', () => {
+    const engine = createEngine({ width: 16, height: 12, seed: 1, stages: [TEST_STAGE] });
+    engine.dispatch({ type: 'confirm' });
+    const state = engine.getState();
+    state.minions.push({
+      kind: 'wanderer', id: 903, alive: true, pos: { x: 5, y: 5 }, vel: { x: 8, y: 0 }, sparkCooldown: 0, frozenFor: 1,
+    });
+    state.lightningArcs.push({ from: { x: 1, y: 1 }, to: { x: 5, y: 5 }, ttl: 0.05 });
+
+    for (let i = 0; i < 6; i++) engine.tick({ dirs: [], action: false }, 1 / 60);
+    expect(state.lightningArcs).toHaveLength(0); // faded out
+    expect(state.minions.find((m) => m.id === 903)!.frozenFor).toBeCloseTo(1 - 6 / 60, 5);
   });
 
   it('ticks hazard timers down and reports them in the HUD snapshot', () => {

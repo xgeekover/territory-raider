@@ -39,8 +39,8 @@ describe('item effects (spec 2.6)', () => {
   it('C destroys every minion on screen', () => {
     const state = makeTestState();
     state.minions.push(
-      { kind: 'wanderer', id: 1, alive: true, pos: { x: 5, y: 5 }, vel: { x: 1, y: 0 }, sparkCooldown: 0 },
-      { kind: 'edgeCrawler', id: 2, alive: true, cell: { x: 5, y: 0 }, dir: 'left', turn: 1, stepCooldown: 0 },
+      { kind: 'wanderer', id: 1, alive: true, pos: { x: 5, y: 5 }, vel: { x: 1, y: 0 }, sparkCooldown: 0, frozenFor: 0 },
+      { kind: 'edgeCrawler', id: 2, alive: true, cell: { x: 5, y: 0 }, dir: 'left', turn: 1, stepCooldown: 0, frozenFor: 0 },
     );
     applyItemEffect(state, 'C');
     expect(state.minions.every((m) => !m.alive)).toBe(true);
@@ -85,8 +85,8 @@ describe('item acquisition through claims (spec 2.6 / test case 7)', () => {
     const state = makeTestState();
     placeBoss(state, { x: 12, y: 5 });
     state.minions.push(
-      { kind: 'wanderer', id: 1, alive: true, pos: { x: 4.5, y: 5.5 }, vel: { x: 1, y: 0 }, sparkCooldown: 0 },
-      { kind: 'wanderer', id: 2, alive: true, pos: { x: 12.5, y: 5.5 }, vel: { x: 1, y: 0 }, sparkCooldown: 0 },
+      { kind: 'wanderer', id: 1, alive: true, pos: { x: 4.5, y: 5.5 }, vel: { x: 1, y: 0 }, sparkCooldown: 0, frozenFor: 0 },
+      { kind: 'wanderer', id: 2, alive: true, pos: { x: 12.5, y: 5.5 }, vel: { x: 1, y: 0 }, sparkCooldown: 0, frozenFor: 0 },
     );
 
     layTrail(state, enclosingTrail(), { x: 8, y: 0 });

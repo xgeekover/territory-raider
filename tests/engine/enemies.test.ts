@@ -43,6 +43,7 @@ describe('wanderer movement (spec 2.4)', () => {
       pos: { x: 8, y: 6 },
       vel: { x: 10, y: 0 },
       sparkCooldown: 0,
+      frozenFor: 0,
     });
     for (let i = 0; i < 600; i++) {
       updateEnemies(state, 1 / 60);
@@ -65,6 +66,7 @@ describe('edge crawler movement (spec 2.4)', () => {
       dir: 'left',
       turn: 1,
       stepCooldown: 0,
+      frozenFor: 0,
     };
     state.minions.push(crawler);
     return crawler;

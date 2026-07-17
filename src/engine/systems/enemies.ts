@@ -173,6 +173,7 @@ export function updateEnemies(state: GameState, dt: number): TrailContact[] {
 
   for (const m of state.minions) {
     if (!m.alive) continue;
+    if (m.frozenFor > 0) continue; // chain-lightning: frozen solid in place
     if (m.kind === 'wanderer') {
       m.sparkCooldown = Math.max(0, m.sparkCooldown - dt);
       collect(MINION_BEHAVIORS.wanderer(state, m, dt), m);

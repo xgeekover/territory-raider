@@ -2,6 +2,8 @@
 
 [한국어](../README.md) · **English**
 
+**🎮 [Play in your browser](https://xgeekover.github.io/territory-raider/)** — no install needed. Desktop builds live in [Releases](https://github.com/xgeekover/territory-raider/releases).
+
 A Volfied/Qix-style **territory-capture** game built with **React 18 + TypeScript (strict) + Canvas 2D** — no game-engine libraries. Cut into the dark, fence off the boss, and claim 80% of the field across an endless campaign with a **boss battle every 5th stage**.
 
 The name, art, and audio are original; only the genre mechanics are borrowed. All visuals are shape-and-code generated on a dark zinc/slate palette with cyan/fuchsia neon accents.
@@ -98,7 +100,11 @@ language — regenerate with `npm run icon`.
 - While drawing you are vulnerable — enemy contact, or a **spark** crawling up your trail, costs a life.
 - Pick up items by enclosing their tiles: **T** freeze, **S** speed, **L** laser charges, **P** points, **C** clear minions.
 - **Rock terrain.** From stage 2, rock clusters dot the field — they block your cut and enemy fire alike (use them as cover). Rocks can never be claimed and are excluded from the 80% target.
-- **Elemental themes (rotating every 10-stage block).** From stage 11, each block carries a theme (fire → ice → lightning) that scatters hazard patches. Stepping on one while drawing: **fire 🔥** burns your whole cut away and returns you to its start (flames can never be drawn through — encircle and claim over them to cleanse), **ice ❄** halves your speed for 3s, **lightning ⚡** freezes you for 1s. Claiming over a patch cleanses it.
+- **Elemental themes (rotating every 10-stage block).** From stage 11, each block carries a theme (fire → ice → lightning) that scatters hazard patches — and **retunes the soundtrack** (fire: dark D-minor saw bass, ice: slow glassy C-major, lightning: urgent E-minor). Stepping on one while drawing:
+  - **Fire 🔥** burns your whole cut away and returns you to its start. Flames can never be drawn through — encircle and claim over them to cleanse.
+  - **Ice ❄** halves your speed for 3 s, and **the floor is slippery** — momentum drags your cut onward; held keys only steer when the slide is blocked.
+  - **Lightning ⚡** freezes you for 1 s — but the bolt **chains to nearby minions**, stunning them for 2.5 s. Tapping a storm patch on purpose is a legitimate defensive play.
+  - Claiming over a patch cleanses it.
 - **The Core fights back** — every **5th stage** (5, 10, … 30) is a boss battle: the boss fires aimed
   projectiles on a cooldown and *enrages as you claim* (past 40% it fires faster, past 65% it spits a
   3-shot fan). Projectiles splash harmlessly against your claimed ground (territory is cover) and only
