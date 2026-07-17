@@ -8,7 +8,7 @@ The name, art, and audio are original; only the genre mechanics are borrowed. Al
 
 ![Territory Raider gameplay](gameplay.gif)
 
-*Cutting territory out of the dark while the stage clock drains — the enemies accelerate as **TIME** turns amber (20 s) and then red (10 s).*
+*A fire-theme stage: claiming territory between rock formations until a flame patch **burns the whole cut away** — then the stage clock runs low and the enemies speed up as **TIME** turns amber (20 s) and red (10 s).*
 
 ## Quick start
 
