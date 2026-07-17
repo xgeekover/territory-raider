@@ -45,13 +45,20 @@ jobs:
         run: npm run build:desktop
 
       # Boot smoke: launch Electron, confirm the renderer loads, self-exit 0.
-      # Linux needs a virtual display (xvfb) and the SUID sandbox helper.
+      # Linux needs a virtual display (xvfb). Older Electron dists ship a SUID
+      # sandbox helper that must be root-owned; newer ones don't include it, in
+      # which case the CI boot runs sandbox-less (it's a boot check, not a
+      # security test).
       - name: Boot smoke test (Linux)
         if: runner.os == 'Linux'
         run: |
-          sudo chown root:root node_modules/electron/dist/chrome-sandbox
-          sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
-          xvfb-run --auto-servernum npm run start:desktop
+          if [ -f node_modules/electron/dist/chrome-sandbox ]; then
+            sudo chown root:root node_modules/electron/dist/chrome-sandbox
+            sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
+            xvfb-run --auto-servernum npm run start:desktop
+          else
+            xvfb-run --auto-servernum npm run start:desktop -- --no-sandbox
+          fi
         env:
           SMOKE_TEST: '1'
 

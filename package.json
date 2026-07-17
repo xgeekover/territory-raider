@@ -5,7 +5,10 @@
   "type": "module",
   "main": "dist-electron/main.cjs",
   "description": "Territory Raider — a Volfied/Qix-style territory-capture game (web + desktop).",
-  "author": "Territory Raider",
+  "author": {
+    "name": "Territory Raider",
+    "email": "xgeekover@users.noreply.github.com"
+  },
   "scripts": {
     "dev": "vite",
     "dev:desktop": "node scripts/dev-electron.mjs",
@@ -21,11 +24,11 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.electron.json",
     "lint": "eslint .",
     "verify": "npm run typecheck && npm run lint && npm run test && npm run build:desktop",
-    "dist": "npm run build:desktop && electron-builder",
+    "dist": "npm run build:desktop && electron-builder --publish never",
     "dist:dir": "npm run build:desktop && electron-builder --dir",
-    "dist:mac": "npm run build:desktop && electron-builder --mac",
-    "dist:win": "npm run build:desktop && electron-builder --win",
-    "dist:linux": "npm run build:desktop && electron-builder --linux"
+    "dist:mac": "npm run build:desktop && electron-builder --mac --publish never",
+    "dist:win": "npm run build:desktop && electron-builder --win --publish never",
+    "dist:linux": "npm run build:desktop && electron-builder --linux --publish never"
   },
   "dependencies": {
     "react": "^18.3.1",
