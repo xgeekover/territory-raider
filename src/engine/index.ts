@@ -35,6 +35,8 @@ function makeSnapshot(state: GameState): HudSnapshot {
     stageTimeLeft: Math.ceil(state.stageTimeLeft),
     laserAmmo: state.laserAmmo,
     timeStopFor: Math.max(0, Math.ceil(state.timeStopFor * 10) / 10),
+    slowedFor: Math.max(0, Math.ceil(state.player.slowedFor * 10) / 10),
+    stunnedFor: Math.max(0, Math.ceil(state.player.stunnedFor * 10) / 10),
     speedBoost: state.player.speedMultiplier > 1,
     lastClearBonus: state.lastClearBonus,
     bossHp: state.boss.hp,
@@ -54,6 +56,8 @@ function snapshotsEqual(a: HudSnapshot, b: HudSnapshot): boolean {
     a.stageTimeLeft === b.stageTimeLeft &&
     a.laserAmmo === b.laserAmmo &&
     a.timeStopFor === b.timeStopFor &&
+    a.slowedFor === b.slowedFor &&
+    a.stunnedFor === b.stunnedFor &&
     a.speedBoost === b.speedBoost &&
     a.lastClearBonus === b.lastClearBonus &&
     a.bossHp === b.bossHp &&
@@ -86,6 +90,9 @@ export function createEngine(options: StateOptions = {}): Engine {
     tick(input: InputState, dt: number): void {
       if (state.status !== 'playing') return;
       state.player.invincibleFor = Math.max(0, state.player.invincibleFor - dt);
+      state.player.slowedFor = Math.max(0, state.player.slowedFor - dt);
+      state.player.stunnedFor = Math.max(0, state.player.stunnedFor - dt);
+      state.player.hazardGraceFor = Math.max(0, state.player.hazardGraceFor - dt);
       updatePlayer(state, input, dt); // may commit a trail and clear the stage
       if (state.status === 'playing') {
         updateLasers(state, dt); // may kill the boss and clear the stage

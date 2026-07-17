@@ -56,6 +56,19 @@ export const LASER_SPEED = 90; // cells/sec
 export const ITEM_PLACEMENT_MARGIN = 10;
 export const ITEM_MIN_SEPARATION = 14;
 
+/**
+ * Elemental hazards (themed stages, spec: themes rotate every 10 stages).
+ * A drawing player entering a hazard cell takes the theme effect, then gets a
+ * short grace so one patch can't chain-trigger every subsequent cell.
+ */
+export const HAZARD_SLOW_FACTOR = 0.5; // ice: movement speed multiplier
+export const HAZARD_SLOW_DURATION = 3; // seconds
+export const HAZARD_STUN_DURATION = 1; // lightning: frozen solid, seconds
+export const HAZARD_GRACE = 1.5; // seconds of immunity after any trigger
+/** Obstacle/hazard placement: keep clear of the border ring and boss spawn. */
+export const FIELD_FEATURE_MARGIN = 5; // min distance from the border ring
+export const FIELD_FEATURE_CENTER_CLEARANCE = 14; // radius kept free around center
+
 /** Enemy tuning not covered by per-stage config. */
 export const WANDERER_SPEED = 10; // cells/sec
 export const EDGE_CRAWLER_SPEED = 14; // boundary cells/sec

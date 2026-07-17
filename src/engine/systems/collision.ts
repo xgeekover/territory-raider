@@ -33,7 +33,9 @@ function wallBetween(state: GameState, ax: number, ay: number, bx: number, by: n
     const cy = Math.floor(ay + (by - ay) * t);
     if (!inBounds(state.grid, cx, cy)) continue;
     const cell = getCell(state.grid, cx, cy);
-    if (cell === CellState.Claimed || cell === CellState.Border) return true;
+    if (cell === CellState.Claimed || cell === CellState.Border || cell === CellState.Obstacle) {
+      return true;
+    }
   }
   return false;
 }

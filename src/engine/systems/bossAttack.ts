@@ -97,8 +97,8 @@ export function updateBossAttack(state: GameState, dt: number): void {
       continue;
     }
     const cell = getCell(state.grid, cx, cy);
-    if (cell === CellState.Claimed || cell === CellState.Border) {
-      state.projectiles.splice(i, 1);
+    if (cell === CellState.Claimed || cell === CellState.Border || cell === CellState.Obstacle) {
+      state.projectiles.splice(i, 1); // rocks are cover too
       continue;
     }
 

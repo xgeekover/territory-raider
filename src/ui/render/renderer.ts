@@ -1,14 +1,14 @@
 import { CellState } from '../../engine/core/types';
-import type { ItemCode } from '../../engine/core/types';
+import type { ItemCode, ThemeKind } from '../../engine/core/types';
 import type { GameState } from '../../engine/core/gameState';
 import { bossRageLevel } from '../../engine/systems/bossAttack';
 import { enemySpeedScale } from '../../engine/systems/enemies';
+import { playerStepPeriod } from '../../engine/systems/movement';
 import {
   BOSS_RADIUS,
   CELL_PX,
   EDGE_CRAWLER_SPEED,
   FIXED_DT,
-  PLAYER_SPEED,
   WANDERER_RADIUS,
 } from '../../engine/config/constants';
 
@@ -59,7 +59,16 @@ const COLORS = {
   spark: '#fde047', // yellow-300
   laser: '#67e8f9',
   itemBox: '#18181b',
+  rock: '#44403c', // stone-700 — obstacle body
+  rockDark: '#33302c', // speckle shade
 } as const;
+
+/** Hazard patch tints per theme; alpha is animated per cell in drawHazards. */
+const HAZARD_COLOR: Record<ThemeKind, string> = {
+  fire: '239,68,68', // red-500
+  ice: '56,189,248', // sky-400
+  lightning: '250,204,21', // yellow-400
+};
 
 export interface Renderer {
   /**
@@ -131,6 +140,9 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
           staticCtx.fillStyle = COLORS.border;
         } else if (cell === CellState.Claimed) {
           staticCtx.fillStyle = state.stage.bgColor;
+        } else if (cell === CellState.Obstacle) {
+          // Rock: two alternating shades read as rough terrain at 6px cells.
+          staticCtx.fillStyle = (x * 7 + y * 13) % 3 === 0 ? COLORS.rockDark : COLORS.rock;
         } else {
           continue; // unclaimed/trail keep the dark base; trail is dynamic
         }
@@ -145,6 +157,35 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
 
   function cellRect(x: number, y: number): [number, number, number, number] {
     return [x * CELL_PX, y * CELL_PX, CELL_PX, CELL_PX];
+  }
+
+  /**
+   * Elemental hazard patches, animated per cell: fire flickers fast, ice
+   * shimmers slowly, lightning strobes. Cheap — one fillRect per hazard cell
+   * with a phase offset hashed from its coordinates.
+   */
+  function drawHazards(state: GameState, timeMs: number): void {
+    const theme = state.stage.theme;
+    if (!theme || state.hazards.size === 0) return;
+    const rgb = HAZARD_COLOR[theme];
+    const w = state.grid.width;
+    for (const idx of state.hazards) {
+      const x = idx % w;
+      const y = (idx - x) / w;
+      const phase = ((x * 31 + y * 17) % 16) / 16;
+      let alpha: number;
+      if (theme === 'fire') {
+        alpha = 0.32 + 0.22 * Math.sin(timeMs / 90 + phase * Math.PI * 2);
+      } else if (theme === 'ice') {
+        alpha = 0.28 + 0.14 * Math.sin(timeMs / 420 + phase * Math.PI * 2);
+      } else {
+        // lightning: mostly dim with sharp strobes rolling through the patch
+        const strobe = Math.sin(timeMs / 70 + phase * Math.PI * 2);
+        alpha = strobe > 0.82 ? 0.65 : 0.16 + 0.08 * strobe;
+      }
+      ctx.fillStyle = `rgba(${rgb},${alpha.toFixed(3)})`;
+      ctx.fillRect(x * CELL_PX, y * CELL_PX, CELL_PX, CELL_PX);
+    }
   }
 
   function drawTrail(state: GameState): void {
@@ -172,8 +213,9 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
       playerPrev = { ...playerCur };
     }
     playerLastInvincible = p.invincibleFor;
-    const period = 1 / (PLAYER_SPEED * p.speedMultiplier);
-    const t = stepProgress(p.moveCooldown - alpha * FIXED_DT, period);
+    // Stunned: the cooldown holds, so t freezes mid-glide on its own.
+    const stunElapsed = p.stunnedFor > 0 ? 0 : alpha * FIXED_DT;
+    const t = stepProgress(p.moveCooldown - stunElapsed, playerStepPeriod(p));
     const rx = playerPrev ? lerp(playerPrev.x, playerCur.x, t) : playerCur.x;
     const ry = playerPrev ? lerp(playerPrev.y, playerCur.y, t) : playerCur.y;
     if (p.invincibleFor > 0 && Math.floor(timeMs / 100) % 2 === 0) return; // blink
@@ -192,6 +234,16 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
     ctx.closePath();
     ctx.fill();
     ctx.shadowBlur = 0;
+    // Hazard status ring: icy blue while slowed, crackling yellow while stunned.
+    if (p.stunnedFor > 0 || p.slowedFor > 0) {
+      const stunned = p.stunnedFor > 0;
+      const ringR = r * (stunned ? 1.7 + 0.2 * Math.sin(timeMs / 45) : 1.6);
+      ctx.strokeStyle = stunned ? 'rgba(250,204,21,0.9)' : 'rgba(56,189,248,0.8)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(cx, cy, ringR, 0, Math.PI * 2);
+      ctx.stroke();
+    }
   }
 
   /** Rage escalation: hotter ring color, faster spin, fury adds an outer ring. */
@@ -518,6 +570,7 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
         staticGrid = state.grid;
       }
       ctx.drawImage(staticLayer, 0, 0);
+      drawHazards(state, timeMs);
       drawItems(state, timeMs);
       drawTrail(state);
       drawSparks(state, alpha);

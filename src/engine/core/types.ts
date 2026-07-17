@@ -4,8 +4,18 @@ export const CellState = {
   Claimed: 1,
   Border: 2,
   Trail: 3,
+  /** Rock formation: blocks drawing, enemies, and projectiles; never claimable. */
+  Obstacle: 4,
 } as const;
 export type CellState = (typeof CellState)[keyof typeof CellState];
+
+/**
+ * Elemental theme of a stage block (spec: themes rotate every 10 stages).
+ * Themed stages scatter hazard patches in unclaimed space; a drawing player
+ * stepping onto one suffers the theme's effect (fire burns the trail away,
+ * ice slows, lightning stuns).
+ */
+export type ThemeKind = 'fire' | 'ice' | 'lightning';
 
 export interface Vec2 {
   x: number;
@@ -49,6 +59,12 @@ export interface PlayerState {
   speedMultiplier: number;
   /** Seconds of post-respawn invincibility remaining. */
   invincibleFor: number;
+  /** Ice hazard: seconds of halved movement speed remaining. */
+  slowedFor: number;
+  /** Lightning hazard: seconds of full movement freeze remaining. */
+  stunnedFor: number;
+  /** Seconds during which hazard cells cannot re-trigger (post-hit grace). */
+  hazardGraceFor: number;
 }
 
 /**
@@ -133,6 +149,12 @@ export interface StageConfig {
   sparkSpeed: number; // trail cells/sec
   itemTiles: ItemCode[]; // item kinds appearing on this stage
   bgColor: string; // background revealed on claimed area (per-stage)
+  /** Rock clusters scattered in the field (0/undefined = open field). */
+  obstacleClusters?: number;
+  /** Elemental theme of this stage's block; undefined = no hazards. */
+  theme?: ThemeKind;
+  /** Hazard patches placed on themed stages (requires `theme`). */
+  hazardPatches?: number;
   /**
    * True on "boss battle" stages (every 5th). The boss actively fights back —
    * aimed projectile volleys + rage phases. On non-boss stages the boss only
@@ -155,6 +177,8 @@ export interface HudSnapshot {
   stageTimeLeft: number; // whole seconds left on the stage countdown
   laserAmmo: number;
   timeStopFor: number; // seconds remaining, 1 decimal
+  slowedFor: number; // ice-hazard slow remaining, 1 decimal
+  stunnedFor: number; // lightning-hazard stun remaining, 1 decimal
   speedBoost: boolean;
   lastClearBonus: number;
   bossHp: number;

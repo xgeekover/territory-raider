@@ -97,6 +97,8 @@ language — regenerate with `npm run icon`.
 - Capture works by flood-filling from the **boss**: whichever side the boss is *not* trapped in stays dark, everything else becomes yours. Minions caught inside die for a trap bonus.
 - While drawing you are vulnerable — enemy contact, or a **spark** crawling up your trail, costs a life.
 - Pick up items by enclosing their tiles: **T** freeze, **S** speed, **L** laser charges, **P** points, **C** clear minions.
+- **Rock terrain.** From stage 2, rock clusters dot the field — they block your cut and enemy fire alike (use them as cover). Rocks can never be claimed and are excluded from the 80% target.
+- **Elemental themes (rotating every 10-stage block).** From stage 11, each block carries a theme (fire → ice → lightning) that scatters hazard patches. Stepping on one while drawing: **fire 🔥** burns your whole cut away and returns you to its start (flames can never be drawn through — encircle and claim over them to cleanse), **ice ❄** halves your speed for 3s, **lightning ⚡** freezes you for 1s. Claiming over a patch cleanses it.
 - **The Core fights back** — every **5th stage** (5, 10, … 30) is a boss battle: the boss fires aimed
   projectiles on a cooldown and *enrages as you claim* (past 40% it fires faster, past 65% it spits a
   3-shot fan). Projectiles splash harmlessly against your claimed ground (territory is cover) and only

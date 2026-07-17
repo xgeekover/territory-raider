@@ -103,6 +103,11 @@ export function commitTrail(state: GameState): ClaimOutcome {
   // 5. items inside the claimed area
   const collectedItems = collectClaimedItems(state);
 
+  // 5b. claiming over a hazard patch cleanses it
+  for (const idx of state.hazards) {
+    if (grid.cells[idx] !== CellState.Unclaimed) state.hazards.delete(idx);
+  }
+
   // 6. ratio + closure score + clear check
   state.claimRatio = claimRatio(grid);
   applyClaimScore(state, claimedCount);
@@ -142,6 +147,7 @@ export function claimAllRemaining(state: GameState): void {
   const trapped = destroyTrappedMinions(state, newlyClaimed);
   applyTrapBonus(state, trapped);
   collectClaimedItems(state);
+  state.hazards.clear(); // the whole field is cleansed with the boss gone
   state.claimRatio = claimRatio(grid);
   checkStageClear(state);
   state.sparks = [];

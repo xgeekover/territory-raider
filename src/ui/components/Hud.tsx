@@ -146,6 +146,16 @@ export function Hud({ snapshot, highScore }: { snapshot: HudSnapshot; highScore:
               FREEZE {snapshot.timeStopFor.toFixed(1)}s
             </span>
           )}
+          {snapshot.stunnedFor > 0 && (
+            <span className="animate-pulse rounded border border-yellow-500 px-1.5 py-0.5 text-xs text-yellow-300">
+              ⚡ STUN
+            </span>
+          )}
+          {snapshot.stunnedFor <= 0 && snapshot.slowedFor > 0 && (
+            <span className="rounded border border-sky-600 px-1.5 py-0.5 text-xs text-sky-300">
+              ❄ SLOW {snapshot.slowedFor.toFixed(1)}s
+            </span>
+          )}
           {snapshot.speedBoost && (
             <span className="rounded border border-fuchsia-700 px-1.5 py-0.5 text-xs text-fuchsia-300">SPEED</span>
           )}

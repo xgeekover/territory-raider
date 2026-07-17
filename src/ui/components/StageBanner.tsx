@@ -1,4 +1,12 @@
-import { isBossStage, BOSS_STAGE_INTERVAL } from '../../engine/config/stages';
+import { isBossStage, BOSS_STAGE_INTERVAL, themeOf } from '../../engine/config/stages';
+import type { ThemeKind } from '../../engine/core/types';
+
+// Themed blocks announce their element so the hazard patches read instantly.
+const THEME_TAG: Record<ThemeKind, { label: string; className: string }> = {
+  fire: { label: '🔥 FIRE ZONE — FLAMES BURN YOUR CUT', className: 'text-orange-400' },
+  ice: { label: '❄ ICE ZONE — FROST SLOWS YOU', className: 'text-sky-300' },
+  lightning: { label: '⚡ STORM ZONE — BOLTS STUN YOU', className: 'text-yellow-300' },
+};
 
 // Codename pools cycled by stage — pure flavor, and endless like the campaign.
 const REGULAR_NAMES = [
@@ -29,6 +37,7 @@ function stageName(stage: number): string {
 export function StageBanner({ stage, onDone }: { stage: number; onDone: () => void }) {
   const name = stageName(stage);
   const boss = isBossStage(stage);
+  const theme = themeOf(stage - 1);
 
   return (
     <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -48,6 +57,11 @@ export function StageBanner({ stage, onDone }: { stage: number; onDone: () => vo
         <p className={`text-sm tracking-[0.5em] ${boss ? 'text-rose-300' : 'text-fuchsia-300'}`}>
           {name}
         </p>
+        {theme && (
+          <p className={`text-[11px] tracking-[0.3em] ${THEME_TAG[theme].className}`}>
+            {THEME_TAG[theme].label}
+          </p>
+        )}
         <p className="mt-1 text-[10px] tracking-widest text-zinc-500">
           {boss ? 'THE CORE FIGHTS BACK — CLAIM 80%' : 'CLAIM 80% OF THE FIELD'}
         </p>
