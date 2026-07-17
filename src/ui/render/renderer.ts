@@ -7,20 +7,28 @@ import {
   BOSS_RADIUS,
   CELL_PX,
   EDGE_CRAWLER_SPEED,
+  FIXED_DT,
   PLAYER_SPEED,
   WANDERER_RADIUS,
 } from '../../engine/config/constants';
 
 /**
- * Visual smoothing for cell-quantized entities (player, edge crawlers): the
- * engine moves them in whole-cell steps, so drawing the raw position jumps
- * CELL_PX at a time. The renderer keeps a per-entity visual position that
- * chases the logical cell at the entity's real speed (with a little headroom
- * so corners stay crisp), giving per-frame sub-cell motion without touching
- * the simulation. A jump larger than SNAP_DIST is a teleport (respawn, new
- * stage) and snaps instead of gliding across the field.
+ * Render interpolation ("fix your timestep"): the simulation advances in
+ * fixed 60Hz ticks, so drawing raw state pins every entity to tick boundaries
+ * — visibly steppy for the cell-quantized player (28 steps/s) and crawlers
+ * (14/s), and juddery on >60Hz displays where frames outnumber ticks.
+ *
+ * Two complementary techniques, both render-only:
+ * - Float entities (boss, wanderers, projectiles, lasers, sparks) lerp
+ *   between a snapshot taken just before the most recent tick (beforeTick)
+ *   and current state, by `alpha` = the accumulator's fraction of the next
+ *   tick. Every frame moves, even when no tick ran.
+ * - Cell-stepped entities (player, crawlers) glide from their previous cell
+ *   to the current one at constant velocity, driven by the engine's own step
+ *   cooldown (refined by alpha), so the motion is perfectly even.
+ *
+ * A jump past SNAP_DIST is a teleport (respawn, new stage) and snaps.
  */
-const SMOOTH_HEADROOM = 1.15;
 const SNAP_DIST = 2.5; // cells
 
 interface VisualPos {
@@ -28,17 +36,13 @@ interface VisualPos {
   y: number;
 }
 
-function chase(vis: VisualPos, tx: number, ty: number, maxStep: number): void {
-  const dx = tx - vis.x;
-  const dy = ty - vis.y;
-  const dist = Math.hypot(dx, dy);
-  if (dist <= maxStep || dist > SNAP_DIST) {
-    vis.x = tx;
-    vis.y = ty;
-    return;
-  }
-  vis.x += (dx / dist) * maxStep;
-  vis.y += (dy / dist) * maxStep;
+const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
+
+/** Constant-velocity progress prev→cur from a step cooldown: 0 right after a
+ *  step (still at prev), 1 when the next step is due (arrived at cur). */
+function stepProgress(remaining: number, period: number): number {
+  if (period <= 0) return 1;
+  return 1 - Math.min(1, Math.max(0, remaining) / period);
 }
 
 /** Dark-theme palette (zinc/slate base + neon accents). All shapes original. */
@@ -58,7 +62,14 @@ const COLORS = {
 } as const;
 
 export interface Renderer {
-  drawFrame(timeMs: number): void;
+  /**
+   * Draw one frame. `alpha` is the fixed-timestep accumulator's fraction of
+   * the next tick (0..1) used for render interpolation; omitting it draws raw
+   * current state.
+   */
+  drawFrame(timeMs: number, alpha?: number): void;
+  /** Snapshot moving-entity positions; call right before every engine tick. */
+  beforeTick(): void;
   /** Number of static-layer redraws so far (perf instrumentation, spec M6). */
   getStaticRedrawCount(): number;
 }
@@ -85,10 +96,29 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
   let staticGrid: GameState['grid'] | null = null;
   let staticRedraws = 0;
 
-  // Visual-smoothing state (see chase() above).
-  let lastFrameMs: number | null = null;
-  let visPlayer: VisualPos | null = null;
-  const visCrawlers = new Map<number, VisualPos>();
+  // ---- Render-interpolation state (see header comment) ----
+  // Previous-tick snapshot of float entities.
+  let prevBoss: VisualPos | null = null;
+  const prevWanderers = new Map<number, VisualPos>();
+  const prevProjectiles = new Map<number, VisualPos>();
+  let prevSparks: number[] = [];
+  let prevLasers: VisualPos[] = [];
+  // Cell-stepped entities: last distinct cell, glided out of at constant speed.
+  let playerPrev: VisualPos | null = null;
+  let playerCur: VisualPos | null = null;
+  let playerLastInvincible = 0;
+  const crawlerTrack = new Map<number, { prev: VisualPos; cur: VisualPos }>();
+
+  function resetInterpolation(): void {
+    prevBoss = null;
+    prevWanderers.clear();
+    prevProjectiles.clear();
+    prevSparks = [];
+    prevLasers = [];
+    playerPrev = null;
+    playerCur = null;
+    crawlerTrack.clear();
+  }
 
   function redrawStatic(state: GameState): void {
     const { grid } = state;
@@ -127,14 +157,29 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
     ctx.shadowBlur = 0;
   }
 
-  function drawPlayer(state: GameState, timeMs: number, frameDt: number): void {
+  function drawPlayer(state: GameState, timeMs: number, alpha: number): void {
     const p = state.player;
-    visPlayer ??= { x: p.pos.x, y: p.pos.y };
-    chase(visPlayer, p.pos.x, p.pos.y, PLAYER_SPEED * p.speedMultiplier * SMOOTH_HEADROOM * frameDt);
+    if (!playerCur || p.pos.x !== playerCur.x || p.pos.y !== playerCur.y) {
+      playerPrev = playerCur ?? { x: p.pos.x, y: p.pos.y };
+      playerCur = { x: p.pos.x, y: p.pos.y };
+    }
+    // Teleports (respawn refills invincibility; long jumps) snap, never glide.
+    if (
+      playerPrev &&
+      (p.invincibleFor > playerLastInvincible ||
+        Math.abs(playerCur.x - playerPrev.x) + Math.abs(playerCur.y - playerPrev.y) > SNAP_DIST)
+    ) {
+      playerPrev = { ...playerCur };
+    }
+    playerLastInvincible = p.invincibleFor;
+    const period = 1 / (PLAYER_SPEED * p.speedMultiplier);
+    const t = stepProgress(p.moveCooldown - alpha * FIXED_DT, period);
+    const rx = playerPrev ? lerp(playerPrev.x, playerCur.x, t) : playerCur.x;
+    const ry = playerPrev ? lerp(playerPrev.y, playerCur.y, t) : playerCur.y;
     if (p.invincibleFor > 0 && Math.floor(timeMs / 100) % 2 === 0) return; // blink
     const color = p.mode === 'drawing' ? COLORS.playerDrawing : COLORS.player;
-    const cx = (visPlayer.x + 0.5) * CELL_PX;
-    const cy = (visPlayer.y + 0.5) * CELL_PX;
+    const cx = (rx + 0.5) * CELL_PX;
+    const cy = (ry + 0.5) * CELL_PX;
     const r = CELL_PX * 1.1;
     ctx.shadowColor = color;
     ctx.shadowBlur = 10;
@@ -153,12 +198,13 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
   const RAGE_RING = ['#e879f9', '#fb923c', '#fb7185'] as const;
   const RAGE_SPIN = [400, 240, 150] as const;
 
-  function drawBoss(state: GameState, timeMs: number): void {
+  function drawBoss(state: GameState, timeMs: number, alpha: number): void {
     const b = state.boss;
     if (!b.alive) return;
     const rage = bossRageLevel(state);
-    const cx = b.pos.x * CELL_PX;
-    const cy = b.pos.y * CELL_PX;
+    const px = prevBoss ?? b.pos;
+    const cx = lerp(px.x, b.pos.x, alpha) * CELL_PX;
+    const cy = lerp(px.y, b.pos.y, alpha) * CELL_PX;
     const r = BOSS_RADIUS * CELL_PX;
     const spin = timeMs / RAGE_SPIN[rage]!;
     const ring = RAGE_RING[rage]!;
@@ -192,10 +238,11 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
     ctx.shadowBlur = 0;
   }
 
-  function drawProjectiles(state: GameState): void {
+  function drawProjectiles(state: GameState, alpha: number): void {
     for (const shot of state.projectiles) {
-      const cx = shot.pos.x * CELL_PX;
-      const cy = shot.pos.y * CELL_PX;
+      const px = prevProjectiles.get(shot.id) ?? shot.pos;
+      const cx = lerp(px.x, shot.pos.x, alpha) * CELL_PX;
+      const cy = lerp(px.y, shot.pos.y, alpha) * CELL_PX;
       // Short motion tail opposite the velocity.
       const speed = Math.hypot(shot.vel.x, shot.vel.y) || 1;
       const tx = cx - (shot.vel.x / speed) * CELL_PX * 1.6;
@@ -221,15 +268,17 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
     }
   }
 
-  function drawMinions(state: GameState, timeMs: number, frameDt: number): void {
-    // Crawlers hop whole boundary cells; chase at their effective speed
-    // (time-pressure scale included) so the visual glide matches the sim.
-    const crawlerStep = EDGE_CRAWLER_SPEED * enemySpeedScale(state) * SMOOTH_HEADROOM * frameDt;
+  function drawMinions(state: GameState, timeMs: number, alpha: number): void {
+    // While Time Stop holds, enemy cooldowns are not draining — don't let the
+    // alpha refinement fake motion.
+    const frozen = state.timeStopFor > 0;
+    const crawlerElapsed = frozen ? 0 : alpha * FIXED_DT * enemySpeedScale(state);
     for (const m of state.minions) {
       if (!m.alive) continue;
       if (m.kind === 'wanderer') {
-        const cx = m.pos.x * CELL_PX;
-        const cy = m.pos.y * CELL_PX;
+        const pv = prevWanderers.get(m.id) ?? m.pos;
+        const cx = lerp(pv.x, m.pos.x, alpha) * CELL_PX;
+        const cy = lerp(pv.y, m.pos.y, alpha) * CELL_PX;
         const r = WANDERER_RADIUS * CELL_PX;
         ctx.shadowColor = COLORS.wanderer;
         ctx.shadowBlur = 8;
@@ -243,16 +292,26 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
         ctx.fill();
         ctx.shadowBlur = 0;
       } else {
-        let vis = visCrawlers.get(m.id);
-        if (!vis) {
-          vis = { x: m.cell.x, y: m.cell.y };
-          visCrawlers.set(m.id, vis);
+        let track = crawlerTrack.get(m.id);
+        if (!track) {
+          track = { prev: { x: m.cell.x, y: m.cell.y }, cur: { x: m.cell.x, y: m.cell.y } };
+          crawlerTrack.set(m.id, track);
         }
-        chase(vis, m.cell.x, m.cell.y, crawlerStep);
+        if (m.cell.x !== track.cur.x || m.cell.y !== track.cur.y) {
+          track.prev = track.cur;
+          track.cur = { x: m.cell.x, y: m.cell.y };
+        }
+        if (Math.abs(track.cur.x - track.prev.x) + Math.abs(track.cur.y - track.prev.y) > SNAP_DIST) {
+          track.prev = { ...track.cur }; // rejoined the frontier after a claim
+        }
+        // frozen -> crawlerElapsed is 0, so t holds still mid-glide.
+        const t = stepProgress(m.stepCooldown - crawlerElapsed, 1 / EDGE_CRAWLER_SPEED);
+        const rx = lerp(track.prev.x, track.cur.x, t);
+        const ry = lerp(track.prev.y, track.cur.y, t);
         const pulse = 1 + 0.15 * Math.sin(timeMs / 120);
         const s = CELL_PX * 1.4 * pulse;
-        const cx = (vis.x + 0.5) * CELL_PX;
-        const cy = (vis.y + 0.5) * CELL_PX;
+        const cx = (rx + 0.5) * CELL_PX;
+        const cy = (ry + 0.5) * CELL_PX;
         ctx.shadowColor = COLORS.crawler;
         ctx.shadowBlur = 8;
         ctx.fillStyle = COLORS.crawler;
@@ -262,16 +321,22 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
     }
   }
 
-  function drawSparks(state: GameState): void {
-    for (const s of state.sparks) {
-      // trailIndex is fractional; lerp between the two neighboring trail cells
-      // (always adjacent) so sparks slide instead of hopping cell to cell.
+  function drawSparks(state: GameState, alpha: number): void {
+    state.sparks.forEach((s, si) => {
+      // trailIndex is fractional; alpha-lerp the index across the last tick,
+      // then lerp between the two neighboring trail cells (always adjacent)
+      // so sparks slide instead of hopping cell to cell.
       const cells = state.trail.cells;
-      const idx = Math.min(Math.max(0, s.trailIndex), cells.length - 1);
+      const pi = prevSparks[si];
+      const base =
+        pi !== undefined && Math.abs(s.trailIndex - pi) < 2
+          ? lerp(pi, s.trailIndex, alpha)
+          : s.trailIndex;
+      const idx = Math.min(Math.max(0, base), cells.length - 1);
       const i0 = Math.floor(idx);
       const c0 = cells[i0];
       const c1 = cells[Math.min(i0 + 1, cells.length - 1)] ?? c0;
-      if (!c0 || !c1) continue;
+      if (!c0 || !c1) return;
       const f = idx - i0;
       const cx = (c0.x + (c1.x - c0.x) * f + 0.5) * CELL_PX;
       const cy = (c0.y + (c1.y - c0.y) * f + 0.5) * CELL_PX;
@@ -282,17 +347,20 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
       ctx.arc(cx, cy, CELL_PX * 0.8, 0, Math.PI * 2);
       ctx.fill();
       ctx.shadowBlur = 0;
-    }
+    });
   }
 
-  function drawLasers(state: GameState): void {
+  function drawLasers(state: GameState, alpha: number): void {
     ctx.strokeStyle = COLORS.laser;
     ctx.shadowColor = COLORS.laser;
     ctx.shadowBlur = 10;
     ctx.lineWidth = 2;
-    for (const l of state.lasers) {
-      const cx = l.pos.x * CELL_PX;
-      const cy = l.pos.y * CELL_PX;
+    state.lasers.forEach((l, li) => {
+      // Index-matched prev; a mismatch after array churn just draws raw.
+      const pv = prevLasers[li];
+      const near = pv && Math.abs(pv.x - l.pos.x) + Math.abs(pv.y - l.pos.y) < 4;
+      const cx = (near ? lerp(pv.x, l.pos.x, alpha) : l.pos.x) * CELL_PX;
+      const cy = (near ? lerp(pv.y, l.pos.y, alpha) : l.pos.y) * CELL_PX;
       const dx = l.dir === 'left' ? -1 : l.dir === 'right' ? 1 : 0;
       const dy = l.dir === 'up' ? -1 : l.dir === 'down' ? 1 : 0;
       const len = CELL_PX * 3;
@@ -300,7 +368,7 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
       ctx.moveTo(cx, cy);
       ctx.lineTo(cx - dx * len, cy - dy * len);
       ctx.stroke();
-    }
+    });
     ctx.shadowBlur = 0;
   }
 
@@ -425,15 +493,24 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
   }
 
   return {
-    drawFrame(timeMs: number): void {
+    beforeTick(): void {
       const state = getState();
-      const frameDt =
-        lastFrameMs === null ? 0 : Math.min(0.1, Math.max(0, (timeMs - lastFrameMs) / 1000));
-      lastFrameMs = timeMs;
+      prevBoss = { x: state.boss.pos.x, y: state.boss.pos.y };
+      prevWanderers.clear();
+      for (const m of state.minions) {
+        if (m.kind === 'wanderer' && m.alive) prevWanderers.set(m.id, { x: m.pos.x, y: m.pos.y });
+      }
+      prevProjectiles.clear();
+      for (const s of state.projectiles) prevProjectiles.set(s.id, { x: s.pos.x, y: s.pos.y });
+      prevSparks = state.sparks.map((s) => s.trailIndex);
+      prevLasers = state.lasers.map((l) => ({ x: l.pos.x, y: l.pos.y }));
+    },
+
+    drawFrame(timeMs: number, alpha = 1): void {
+      const state = getState();
       if (state.grid !== staticGrid) {
-        // New stage: drop smoothing state so nothing glides across the field.
-        visPlayer = null;
-        visCrawlers.clear();
+        // New stage: drop interpolation state so nothing glides across the field.
+        resetInterpolation();
       }
       if (state.gridVersion !== staticVersion || state.grid !== staticGrid) {
         redrawStatic(state);
@@ -443,12 +520,12 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
       ctx.drawImage(staticLayer, 0, 0);
       drawItems(state, timeMs);
       drawTrail(state);
-      drawSparks(state);
-      drawMinions(state, timeMs, frameDt);
-      drawBoss(state, timeMs);
-      drawProjectiles(state);
-      drawLasers(state);
-      drawPlayer(state, timeMs, frameDt);
+      drawSparks(state, alpha);
+      drawMinions(state, timeMs, alpha);
+      drawBoss(state, timeMs, alpha);
+      drawProjectiles(state, alpha);
+      drawLasers(state, alpha);
+      drawPlayer(state, timeMs, alpha);
     },
     getStaticRedrawCount: () => staticRedraws,
   };

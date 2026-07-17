@@ -55,6 +55,7 @@ export function GameCanvas({ engine }: { engine: Engine }) {
 
       let acc = accumulatorRef.current + Math.min(frameDt, MAX_FRAME_DT);
       while (acc >= FIXED_DT) {
+        renderer.beforeTick(); // snapshot prev positions for render interpolation
         engine.tick(inputRef.current, FIXED_DT);
         acc -= FIXED_DT;
       }
@@ -64,7 +65,7 @@ export function GameCanvas({ engine }: { engine: Engine }) {
       fx.update(frameDt);
 
       const now = performance.now();
-      renderer.drawFrame(now);
+      renderer.drawFrame(now, acc / FIXED_DT);
       fx.draw(now);
 
       if (wrapRef.current) {
