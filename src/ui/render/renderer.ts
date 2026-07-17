@@ -2,11 +2,44 @@ import { CellState } from '../../engine/core/types';
 import type { ItemCode } from '../../engine/core/types';
 import type { GameState } from '../../engine/core/gameState';
 import { bossRageLevel } from '../../engine/systems/bossAttack';
+import { enemySpeedScale } from '../../engine/systems/enemies';
 import {
   BOSS_RADIUS,
   CELL_PX,
+  EDGE_CRAWLER_SPEED,
+  PLAYER_SPEED,
   WANDERER_RADIUS,
 } from '../../engine/config/constants';
+
+/**
+ * Visual smoothing for cell-quantized entities (player, edge crawlers): the
+ * engine moves them in whole-cell steps, so drawing the raw position jumps
+ * CELL_PX at a time. The renderer keeps a per-entity visual position that
+ * chases the logical cell at the entity's real speed (with a little headroom
+ * so corners stay crisp), giving per-frame sub-cell motion without touching
+ * the simulation. A jump larger than SNAP_DIST is a teleport (respawn, new
+ * stage) and snaps instead of gliding across the field.
+ */
+const SMOOTH_HEADROOM = 1.15;
+const SNAP_DIST = 2.5; // cells
+
+interface VisualPos {
+  x: number;
+  y: number;
+}
+
+function chase(vis: VisualPos, tx: number, ty: number, maxStep: number): void {
+  const dx = tx - vis.x;
+  const dy = ty - vis.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist <= maxStep || dist > SNAP_DIST) {
+    vis.x = tx;
+    vis.y = ty;
+    return;
+  }
+  vis.x += (dx / dist) * maxStep;
+  vis.y += (dy / dist) * maxStep;
+}
 
 /** Dark-theme palette (zinc/slate base + neon accents). All shapes original. */
 const COLORS = {
@@ -52,6 +85,11 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
   let staticGrid: GameState['grid'] | null = null;
   let staticRedraws = 0;
 
+  // Visual-smoothing state (see chase() above).
+  let lastFrameMs: number | null = null;
+  let visPlayer: VisualPos | null = null;
+  const visCrawlers = new Map<number, VisualPos>();
+
   function redrawStatic(state: GameState): void {
     const { grid } = state;
     staticCtx.fillStyle = COLORS.unclaimed;
@@ -89,12 +127,14 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
     ctx.shadowBlur = 0;
   }
 
-  function drawPlayer(state: GameState, timeMs: number): void {
+  function drawPlayer(state: GameState, timeMs: number, frameDt: number): void {
     const p = state.player;
+    visPlayer ??= { x: p.pos.x, y: p.pos.y };
+    chase(visPlayer, p.pos.x, p.pos.y, PLAYER_SPEED * p.speedMultiplier * SMOOTH_HEADROOM * frameDt);
     if (p.invincibleFor > 0 && Math.floor(timeMs / 100) % 2 === 0) return; // blink
     const color = p.mode === 'drawing' ? COLORS.playerDrawing : COLORS.player;
-    const cx = (p.pos.x + 0.5) * CELL_PX;
-    const cy = (p.pos.y + 0.5) * CELL_PX;
+    const cx = (visPlayer.x + 0.5) * CELL_PX;
+    const cy = (visPlayer.y + 0.5) * CELL_PX;
     const r = CELL_PX * 1.1;
     ctx.shadowColor = color;
     ctx.shadowBlur = 10;
@@ -181,7 +221,10 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
     }
   }
 
-  function drawMinions(state: GameState, timeMs: number): void {
+  function drawMinions(state: GameState, timeMs: number, frameDt: number): void {
+    // Crawlers hop whole boundary cells; chase at their effective speed
+    // (time-pressure scale included) so the visual glide matches the sim.
+    const crawlerStep = EDGE_CRAWLER_SPEED * enemySpeedScale(state) * SMOOTH_HEADROOM * frameDt;
     for (const m of state.minions) {
       if (!m.alive) continue;
       if (m.kind === 'wanderer') {
@@ -200,10 +243,16 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
         ctx.fill();
         ctx.shadowBlur = 0;
       } else {
+        let vis = visCrawlers.get(m.id);
+        if (!vis) {
+          vis = { x: m.cell.x, y: m.cell.y };
+          visCrawlers.set(m.id, vis);
+        }
+        chase(vis, m.cell.x, m.cell.y, crawlerStep);
         const pulse = 1 + 0.15 * Math.sin(timeMs / 120);
         const s = CELL_PX * 1.4 * pulse;
-        const cx = (m.cell.x + 0.5) * CELL_PX;
-        const cy = (m.cell.y + 0.5) * CELL_PX;
+        const cx = (vis.x + 0.5) * CELL_PX;
+        const cy = (vis.y + 0.5) * CELL_PX;
         ctx.shadowColor = COLORS.crawler;
         ctx.shadowBlur = 8;
         ctx.fillStyle = COLORS.crawler;
@@ -215,11 +264,17 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
 
   function drawSparks(state: GameState): void {
     for (const s of state.sparks) {
-      const i = Math.min(Math.floor(s.trailIndex), state.trail.cells.length - 1);
-      const cell = state.trail.cells[i];
-      if (!cell) continue;
-      const cx = (cell.x + 0.5) * CELL_PX;
-      const cy = (cell.y + 0.5) * CELL_PX;
+      // trailIndex is fractional; lerp between the two neighboring trail cells
+      // (always adjacent) so sparks slide instead of hopping cell to cell.
+      const cells = state.trail.cells;
+      const idx = Math.min(Math.max(0, s.trailIndex), cells.length - 1);
+      const i0 = Math.floor(idx);
+      const c0 = cells[i0];
+      const c1 = cells[Math.min(i0 + 1, cells.length - 1)] ?? c0;
+      if (!c0 || !c1) continue;
+      const f = idx - i0;
+      const cx = (c0.x + (c1.x - c0.x) * f + 0.5) * CELL_PX;
+      const cy = (c0.y + (c1.y - c0.y) * f + 0.5) * CELL_PX;
       ctx.shadowColor = COLORS.spark;
       ctx.shadowBlur = 12;
       ctx.fillStyle = COLORS.spark;
@@ -372,6 +427,14 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
   return {
     drawFrame(timeMs: number): void {
       const state = getState();
+      const frameDt =
+        lastFrameMs === null ? 0 : Math.min(0.1, Math.max(0, (timeMs - lastFrameMs) / 1000));
+      lastFrameMs = timeMs;
+      if (state.grid !== staticGrid) {
+        // New stage: drop smoothing state so nothing glides across the field.
+        visPlayer = null;
+        visCrawlers.clear();
+      }
       if (state.gridVersion !== staticVersion || state.grid !== staticGrid) {
         redrawStatic(state);
         staticVersion = state.gridVersion;
@@ -381,11 +444,11 @@ export function createRenderer(canvas: HTMLCanvasElement, getState: () => GameSt
       drawItems(state, timeMs);
       drawTrail(state);
       drawSparks(state);
-      drawMinions(state, timeMs);
+      drawMinions(state, timeMs, frameDt);
       drawBoss(state, timeMs);
       drawProjectiles(state);
       drawLasers(state);
-      drawPlayer(state, timeMs);
+      drawPlayer(state, timeMs, frameDt);
     },
     getStaticRedrawCount: () => staticRedraws,
   };
